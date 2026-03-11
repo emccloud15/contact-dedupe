@@ -1,0 +1,48 @@
+# Created by venv; see https://docs.python.org/3/library/venv.html
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+.venv/
+
+# Environment variables
+.env
+.env.local
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Data files (important for your use case)
+*.csv
+*.xlsx
+*.xls
+
+# Logs
+*.log
+
+# Distribution/packaging
+dist/
+build/
+*.egg-info/
+site-packages/
+
+# Client configs
+*.yaml
+
+# Node
+node_modules/
+
+
+
