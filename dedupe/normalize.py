@@ -1,5 +1,5 @@
 import pandas as pd
-from pydantic import BaseModel
+import sys
 from typing import Callable, Optional
 
 from common.exceptions import ConfigError
@@ -22,10 +22,9 @@ def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str],str]):
 # Only creates rows when there is no null value for one of the fields being combined. 
 # For example if name is John Smith and phone is null instead of getting johnsmith|
 # the row would be null. If name is John Smith and phone is (123)-7645555 the result is johnsmith|1237645555
-def normalize_contact_method(df: pd.DataFrame, contact_cols: list[str], contact_type: str, name_cols: Optional[list[str]]= None) -> pd.DataFrame:
+def normalize_contact_method(df: pd.DataFrame, contact_type: str, contact_cols: list[str], name_cols: Optional[list[str]] = None) -> pd.DataFrame:
 
     df = df.copy()
-
     if name_cols:
         names =[safe_apply(df,name, clean_name) for name in name_cols]
         name_mark = 'name'
@@ -81,55 +80,21 @@ def normalize_contact_method(df: pd.DataFrame, contact_cols: list[str], contact_
        
     return df[[c for c in df.columns if c.startswith("clean_")]]
 
-
-# Determine which columns want to be included at all and if name included in ck
-def column_choice_helper(data: BaseModel) -> tuple[list[str], list[str]]:
-    contact_cols_no_name=[]
-    contact_cols_name=[]
-    for col,info in data.items():
-        if not info.include_col:
-            continue
-        if not info.include_name:
-            contact_cols_no_name.append(col)
-        else:
-            contact_cols_name.append(col)
-
-    return contact_cols_name, contact_cols_no_name
+def normalize_helper(df: pd.DataFrame, data: object, contact_type: str, name_cols: Optional[list[str]] = None):
+    data = getattr(data, contact_type)
+    if not data.include_name:
+        name_cols = None
+    return normalize_contact_method(df=df, contact_type=contact_type, contact_cols=data.columns, name_cols=name_cols)
 
 
-
-# Step 2. Determine which fields to include in combined columns and whether or not to attach a name field to the key  
-def normalize_handler(df: pd.DataFrame, data: BaseModel, name_cols: list[str], contact_type: str) -> list[pd.Series]:
-    cleaned_series=[]
-
-    # Df field names for which fields to include name or not
-    contact_cols_name, contact_cols_no_name = column_choice_helper(data)
-    
-    if contact_cols_name:
-        df_cleaned_name = normalize_contact_method(df, name_cols=name_cols, contact_cols=contact_cols_name, contact_type=contact_type)
-        
-        cleaned_series.append(df_cleaned_name)
-    
-    if contact_cols_no_name:
-        df_cleaned_no_name = normalize_contact_method(df, contact_cols=contact_cols_no_name, contact_type=contact_type)
-        cleaned_series.append(df_cleaned_no_name)
-    
-    return cleaned_series
-    
 
 # Step 1. Uncleaned Original Data Frame passed as well as the columns from the client yaml as data
-def normalize_df(df: pd.DataFrame, data: BaseModel) -> pd.DataFrame:
-    final_cleaned_series=[]
-
-    # Checks which name columns to include in composite key
+def normalize_df(df: pd.DataFrame, data: object) -> pd.DataFrame:   
+    # Checks which name columns to include in normalized columns
     if data.name:
-        name_cols = [col for col,include in data.name.items() if include]
-    if data.phone:
-        final_cleaned_series += normalize_handler(df,data.phone,name_cols,'phone')
-    if data.email:
-        final_cleaned_series += normalize_handler(df,data.email,name_cols,'email')
-    if data.address:
-        final_cleaned_series += normalize_handler(df,data.address,name_cols,'address')
+        name_cols = [col for col in data.name.columns]
     
-    
-    return df.join(final_cleaned_series)
+    contact_types = [field for field,value in data if value is not None]
+
+    final_cleaned_dfs = [normalize_helper(df,data,contact_type,name_cols) for contact_type in contact_types if contact_type != 'name']
+    return df.join(final_cleaned_dfs)

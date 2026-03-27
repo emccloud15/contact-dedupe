@@ -11,7 +11,7 @@ def get_logger(name=None):
         ch = logging.StreamHandler()
         ch.setLevel(logging.DEBUG)
 
-        fmt = "%(asctime)s - %(name)s - %(levelname)s - %(messages)s"
+        fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         formatter = logging.Formatter(fmt)
         fh.setFormatter(formatter)
         ch.setFormatter(formatter)
