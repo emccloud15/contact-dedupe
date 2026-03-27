@@ -86,17 +86,30 @@ def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: s
             scores = process.cdist(records,records, scorer=fuzz.WRatio) 
             final_matrix += (scores * weight)
             matrices[f"{col.split(':')[1].strip() if ':' in col else col}"] += scores
-            
-        hits = {k:v >= l_bound for k,v in matrices.items()}
-        hit_count = sum(v for v in hits.values())
-        gate = hit_count >= 2
-        
-        final_matrix = np.where(gate, final_matrix, 0)
-    
 
+            if '5S-EWTN-251866' in block_df['legacycontactid'].values:
+                print(col)
+                print(scores[2,33])
+                print(final_matrix[2,33])
+                
+
+
+            
+            
+        hits = {k:v >= u_bound for k,v in matrices.items()}
+        hit_count = sum(v for v in hits.values())
+    
+        gate_mask = hit_count > 2
+        final_matrix += (hit_count)
         
+        final_matrix = np.where(gate_mask, final_matrix, 0)
+        if '5S-EWTN-251866' in block_df['legacycontactid'].values:
+                print(scores[2,33])
+                print(final_matrix[2,33])
+                
         # Assign scores to df
         assign_scores(final_matrix, block_df, score_array, dsu, u_bound,l_bound)
+
 
     
     
@@ -104,8 +117,6 @@ def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: s
     main_df.loc[mask,'score'] = score_array[mask]
     
     label_df(main_df,l_bound=l_bound, u_bound=u_bound)
-    
-    
 
 
     return main_df

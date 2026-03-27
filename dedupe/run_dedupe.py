@@ -104,9 +104,12 @@ def run_dedupe(client_cfg: BaseModel) -> None:
     # Create dictionary for column weights. Specified in client config
     weighted_cols = column_weights(cols,client_cfg)
 
+   
+
     # Ensure given weights add to 1.0
     # Gives user choice to auto-balance or exit. THIS FUNCTION CAN EXIT THE PROGRAM
     weighted_cols = test_weights(weighted_cols)
+
 
     # Run fuzzy dedupe
     main_df = run_fuzzy_dedupe(main_df, weighted_cols, dsu, client_cfg.BLOCKING, client_cfg.BOUNDS)
