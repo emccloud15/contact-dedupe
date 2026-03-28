@@ -92,15 +92,21 @@ def run_dedupe(client_cfg: BaseModel) -> None:
 
 
     # Only dedupe on normalized columns
-    cols = [col for col in normalized_df.columns if col.endswith((':email',':phone',':address'))]
+    primary = [col for col in normalized_df.columns if col.endswith((':name_email',':name_phone',':name_address'))]
+    secondary = [col for col in normalized_df.columns if col.endswith((':email',':phone',':address'))]
+    cols = primary if primary else secondary
+    
 
     # Instantiate DSU 
     dsu = DSU(len(normalized_df))
 
     # Run strict dedupe
     main_df = run_strict_dedupe(normalized_df, cols, dsu)
-    
 
+    print(main_df['clean_address:address'])
+    
+    cols = secondary
+    
     # Create dictionary for column weights. Specified in client config
     weighted_cols = column_weights(cols,client_cfg)
 

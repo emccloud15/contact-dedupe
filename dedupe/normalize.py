@@ -22,15 +22,12 @@ def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str],str]):
 # Only creates rows when there is no null value for one of the fields being combined. 
 # For example if name is John Smith and phone is null instead of getting johnsmith|
 # the row would be null. If name is John Smith and phone is (123)-7645555 the result is johnsmith|1237645555
-def normalize_contact_method(df: pd.DataFrame, contact_type: str, contact_cols: list[str], name_cols: Optional[list[str]] = None) -> pd.DataFrame:
+def normalize_contact_method(df: pd.DataFrame, data: object, contact_type: str, contact_cols: list[str], name_cols: Optional[list[str]] = None) -> pd.DataFrame:
 
     df = df.copy()
     if name_cols:
         names =[safe_apply(df,name, clean_name) for name in name_cols]
-        name_mark = 'name'
-    else:
-        name_mark=''
-        names = []
+
 
     
 
@@ -46,13 +43,22 @@ def normalize_contact_method(df: pd.DataFrame, contact_type: str, contact_cols: 
             address_df[mask].apply(lambda row: "|".join(row.dropna().astype(str)), axis=1)
         )
         parts = [joined_address.astype(str)]
-        parts +=[s[mask].astype(str) for s in names]
-        joined = (
+
+        if data.include_name:
+            parts +=[s[mask].astype(str) for s in names]
+            joined_name = (
                 pd.concat(parts, axis=1).loc[mask].agg("|".join, axis=1)
             )
 
-        df[f"clean_address_{name_mark}:address"] = pd.NA
-        df.loc[mask, f"clean_address_{name_mark}:address"] = joined
+            df["clean_address:name_address"] = pd.NA
+            df.loc[mask, f"clean_address:name_address"] = joined_name
+
+        df["clean_address:address"] = pd.NA
+        df.loc[mask,"clean_address:address"] = joined_address
+        
+
+        
+        
         return df[[c for c in df.columns if c.startswith("clean_")]]
 
     else:
@@ -68,15 +74,21 @@ def normalize_contact_method(df: pd.DataFrame, contact_type: str, contact_cols: 
             mask = contact_cleaned.notna()
 
             parts = [contact_cleaned[mask].astype(str)]
-            parts += [s[mask].astype(str) for s in names]
+
+            if data.include_name:
+                parts += [s[mask].astype(str) for s in names]
+                joined_name = (
+                pd.concat(parts, axis=1).loc[mask].agg("|".join, axis=1)
+            )
+                df[f"clean_{contact_col}:name_{contact_type}"] = pd.NA
+                df.loc[mask, f"clean_{contact_col}:name_{contact_type}"] = joined_name
         
             joined = (
                 pd.concat(parts, axis=1).loc[mask].agg("|".join, axis=1)
             )
 
-
-            df[f"clean_{contact_col}_{name_mark}:{contact_type}"] = pd.NA
-            df.loc[mask, f"clean_{contact_col}_{name_mark}:{contact_type}"] = joined
+            df[f"clean_{contact_col}:{contact_type}"] = pd.NA
+            df.loc[mask, f"clean_{contact_col}:{contact_type}"] = joined
        
     return df[[c for c in df.columns if c.startswith("clean_")]]
 
@@ -84,7 +96,7 @@ def normalize_helper(df: pd.DataFrame, data: object, contact_type: str, name_col
     data = getattr(data, contact_type)
     if not data.include_name:
         name_cols = None
-    return normalize_contact_method(df=df, contact_type=contact_type, contact_cols=data.columns, name_cols=name_cols)
+    return normalize_contact_method(df=df, data=data, contact_type=contact_type, contact_cols=data.columns, name_cols=name_cols)
 
 
 
