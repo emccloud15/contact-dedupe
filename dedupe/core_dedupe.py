@@ -1,10 +1,12 @@
 import pandas as pd
 import numpy as np
-from rapidfuzz import process, fuzz
+from rapidfuzz import process, fuzz, distance
 from typing import Optional
+from itertools import combinations
 from nicknames import NickNamer
 import sys
 
+from common.exceptions import ConfigError
 from common.logger import get_logger
 logger = get_logger(__name__)
 
@@ -61,77 +63,90 @@ def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array:
     np.maximum.at(score_array, block_df.index[rows], scores)
     np.maximum.at(score_array, block_df.index[columns], scores)
     
-
-
-def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: str, bounds: list[dict], nickname_col: Optional[str] = None):
+def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: str, bounds: list[dict], main_match_criteria: str, nickname_col: Optional[str] = None):
     
     score_array = np.zeros(len(main_df))
 
     u_bound = bounds[1]['u_bound']
     l_bound = bounds[0]['l_bound']
     
+    if nickname_col:
+        nn = NickNamer()
 
-    # Creating blocks to fuzzy on. Can be changed in clieny yaml
+
+    # Looping through blocks to fuzzy on. Blocking can be changed in client yaml
     dupe_df = main_df[main_df['count']==1]
     for _,block_df in dupe_df.groupby(dupe_df[blocking].str[:3]):
         n = len(block_df)
         if n < 2:
             continue
 
+        final_matrix = np.zeros((n,n))
+
         # Nickname set for finding name matches between records like "Christina" and "Tina"
         if nickname_col:
-            nn = NickNamer()
             nicknames =  {name : set(nn.nicknames_of(name)) | {name.lower()} for name in block_df[nickname_col].unique()}
-            for name in nicknames.keys():
-                
-                if name == 'Tina':
-                    print(name)
-                    print(nicknames[name])
-
-    
-        final_matrix = np.zeros((n,n))
-        matrices = {f"{col.split(':')[1].strip()}" if ':' in col else col: np.zeros((n,n)) for col in cols.keys()} 
+            
+        # Creating a dictionary of matrices. One for each column being fuzzied on. The columns being fuzzied on are normalized columns from the normalize function
+        # They are all in the form "clean_originalcolname:contacttype" i.e clean_homephone:phone, except for address which is just clean_address:address,
+        # And name columns which are their original column name
+        matrices = {f"{col.split("_")[1].split(':')[0].strip()}" if '_' in col else col: np.zeros((n,n)) for col in cols.keys()} 
         
         # Normalized columns to fuzzy on
         for col,weight in cols.items():
+            
 
             records = block_df[col].to_list()
-        
 
-
-            scores = process.cdist(records,records, scorer=fuzz.WRatio) 
-            final_matrix += (scores * weight)
-            matrices[f"{col.split(':')[1].strip() if ':' in col else col}"] += scores
-            if '5S-EWTN-254538' in block_df['legacycontactid'].values:
-                print(col)
-                print(scores[47,3])
-                print(final_matrix[47,3])
-
-        
-        
-        hits = {k:v >= 95 for k,v in matrices.items()}
-        hit_count = sum(v for v in hits.values())
-    
-        gate_mask = (matrices['address'] >= 95.0) & (hit_count >= 2)
-        final_matrix += (hit_count/2)
-        
-        
-        final_matrix = np.where(gate_mask, final_matrix, 0)
-        if ('5S-EWTN-254538' in block_df['legacycontactid'].values):
-            print(final_matrix[47,3])
-       
+            # If nickname column has been passed, seperate fuzzying will be performed on this column
+            if col == nickname_col:
                 
+
+                for (i, name_a), (j, name_b) in combinations(enumerate(records), 2):
+                    # Doing a lookup on the nickname dictionary to create an intersecting set for names that are eachothers nicknames
+                    match = bool(nicknames.get(name_a, set()) & nicknames.get(name_b, set()))
+                    
+                    # Giving a score of 100 for names that are eachothers nicknames
+                    # The main match criteria used later on will mitigate false positives
+                    if match:        
+                        matrices[nickname_col][i, j] = 100
+                        final_matrix[i, j] += (100 * weight)
+                        
+                    # No nickname matches, Jaro Winkler will be used to fuzzy match
+                    else:
+                        score = distance.JaroWinkler.normalized_similarity(name_a, name_b) * 100
+                        matrices[nickname_col][i, j] = score
+                        final_matrix[i, j] += (score * weight)
+            
+            # Non nickname columns will use the W Ratio for fuzzying
+            else:
+                scores = process.cdist(records,records, scorer=fuzz.WRatio) 
+                final_matrix += (scores * weight)
+
+                matrices[f"{col.split("_")[1].split(':')[0].strip()}" if '_' in col else col] += scores
+
+        
+        # Creates a matrix with how many fields return a matching score of over 95.
+        # Creating a count for how many fields the two comparing records have in common
+        hits = {k:v >= 95 for k,v in matrices.items()}
+        hit_count = sum(v.astype(int) for v in hits.values())
+
+        
+        gate_mask = (matrices[main_match_criteria] >= 95.0) & (hit_count >= 2)
+
+
+        final_matrix = np.where(gate_mask, final_matrix, 0)
+            
+
         # Assign scores to df
         assign_scores(final_matrix, block_df, score_array, dsu, u_bound,l_bound)
 
 
-    sys.exit()
-    
     mask = score_array > 0
     main_df.loc[mask,'score'] = score_array[mask]
     
     label_df(main_df,l_bound=l_bound, u_bound=u_bound)
-
+   
     return main_df
             
 
