@@ -18,15 +18,22 @@ class Columns(BaseModel):
     email: Optional[ColumnTypeConfig] = None
     address: Optional[ColumnTypeConfig] = None
     name: Optional[NameColumnTypeConfig] = None
+
+class Blocking(BaseModel):
+    type: str
+    column: str
+    portion: Optional[str] = None
+    
 class Bounds(BaseModel):
     u_bound: float
     l_bound: float
+
 
 class ClientConfig(BaseModel):
     CLIENT_NAME: str
     FILE_PATH: Path
     COLUMNS:  Columns
-    BLOCKING: str
+    BLOCKING: Blocking
     MAIN_MATCH_CRITERIA: str
     NICKNAME: Optional[str] = None
     BOUNDS: Optional[Bounds] = None
@@ -45,7 +52,26 @@ class ClientConfig(BaseModel):
         if self.MAIN_MATCH_CRITERIA not in allowed:
             raise ConfigError(f"The MAIN_MATCH_CRITERIA value must be one of {allowed}.")
         return self
+    
+    @model_validator(mode='after')
+    def validate_blocking(self):
+        allowed_type = ['zipcode','postal','statecode','state','id','name']
+        allowed_portion = ['start', 'end']
+        allowed_cols = []
+        for _, field_value in self.COLUMNS:
+            if field_value is not None:
+                allowed_cols.extend([field_value.columns])
+        
+        if self.BLOCKING.type not in allowed_type:
+            raise ConfigError(f"BLOCKING type must be one of {allowed_type}")
+        elif self.BLOCKING.column not in allowed_cols:
+            raise ConfigError(f"BLOCKING column must be one of {allowed_cols}")
+        elif self.BLOCKING.portion is not None and self.BLOCKING.portion not in allowed_portion:
+            raise ConfigError(f"BLOCKING portion must be one of {allowed_portion}")
+        else:
+            return self
 
 
+    
 class SystemConfig(BaseModel):
     CLIENT_YAML: Path
