@@ -18,6 +18,9 @@ class Columns(BaseModel):
     email: Optional[ColumnTypeConfig] = None
     address: Optional[ColumnTypeConfig] = None
     name: Optional[NameColumnTypeConfig] = None
+class Bounds(BaseModel):
+    u_bound: float
+    l_bound: float
 
 class ClientConfig(BaseModel):
     CLIENT_NAME: str
@@ -26,7 +29,7 @@ class ClientConfig(BaseModel):
     BLOCKING: str
     MAIN_MATCH_CRITERIA: str
     NICKNAME: Optional[str] = None
-    BOUNDS: Optional[list[dict[str,float]]] = None
+    BOUNDS: Optional[Bounds] = None
     
     @model_validator(mode='after')
     def validate_main_match_criteria(self):
