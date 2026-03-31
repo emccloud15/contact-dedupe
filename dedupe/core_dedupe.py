@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from rapidfuzz import process, fuzz
 from typing import Optional
+from nicknames import NickNamer
 import sys
 
 from common.logger import get_logger
@@ -62,12 +63,13 @@ def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array:
     
 
 
-def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: str, bounds: list[dict]):
+def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: str, bounds: list[dict], nickname_col: Optional[str] = None):
     
     score_array = np.zeros(len(main_df))
 
     u_bound = bounds[1]['u_bound']
     l_bound = bounds[0]['l_bound']
+    
 
     # Creating blocks to fuzzy on. Can be changed in clieny yaml
     dupe_df = main_df[main_df['count']==1]
@@ -76,13 +78,27 @@ def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: s
         if n < 2:
             continue
 
-        
+        # Nickname set for finding name matches between records like "Christina" and "Tina"
+        if nickname_col:
+            nn = NickNamer()
+            nicknames =  {name : set(nn.nicknames_of(name)) | {name.lower()} for name in block_df[nickname_col].unique()}
+            for name in nicknames.keys():
+                
+                if name == 'Tina':
+                    print(name)
+                    print(nicknames[name])
+
+    
         final_matrix = np.zeros((n,n))
         matrices = {f"{col.split(':')[1].strip()}" if ':' in col else col: np.zeros((n,n)) for col in cols.keys()} 
         
         # Normalized columns to fuzzy on
         for col,weight in cols.items():
+
             records = block_df[col].to_list()
+        
+
+
             scores = process.cdist(records,records, scorer=fuzz.WRatio) 
             final_matrix += (scores * weight)
             matrices[f"{col.split(':')[1].strip() if ':' in col else col}"] += scores
@@ -109,7 +125,7 @@ def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: s
         assign_scores(final_matrix, block_df, score_array, dsu, u_bound,l_bound)
 
 
-    
+    sys.exit()
     
     mask = score_array > 0
     main_df.loc[mask,'score'] = score_array[mask]
