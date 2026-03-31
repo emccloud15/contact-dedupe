@@ -13,6 +13,7 @@ logger = get_logger(__name__)
 
 def run_strict_dedupe(normalized_df: pd.DataFrame, cols: list[str], dsu: object):
     normalized_df.loc[:,'dupe'] = pd.NA
+    normalized_df.loc[:,'score'] = pd.NA
     # Dedupe on each of the client chosen normalized columns
     for col in cols:
         #duped_df = normalized_df[normalized_df['dupe'] != 'TRUE']
@@ -27,7 +28,8 @@ def run_strict_dedupe(normalized_df: pd.DataFrame, cols: list[str], dsu: object)
         mask = normalized_df[col].duplicated(keep=False) & normalized_df[col].notna()
         normalized_df.loc[mask,f"{col}_dupe"] = 'TRUE'
         normalized_df.loc[~mask,f"{col}_dupe"] = 'FALSE'
-        normalized_df.loc[mask,'dupe'] = 'TRUE'
+        normalized_df.loc[mask, 'dupe'] = 'TRUE'
+        normalized_df.loc[~mask, 'dupe'] = 'FALSE'
     
         normalized_df.loc[mask,'count'] = (normalized_df[mask].groupby(col).cumcount() + 1)
 
@@ -36,20 +38,25 @@ def run_strict_dedupe(normalized_df: pd.DataFrame, cols: list[str], dsu: object)
     
     return normalized_df
 
-def label_df(main_df: pd.DataFrame, l_bound: Optional[float] = 80.0, u_bound: Optional[float] = 86.0):
+def label_df(main_df: pd.DataFrame, l_bound: float, u_bound: float):
     mask = main_df['dupe'] == 'TRUE'
-    main_df.loc[mask,'score'] = 100.0
-    mask = main_df['score'].isna()
-    main_df.loc[mask,'dupe'] = 'FALSE'
-    mask = (main_df['score'] >= l_bound) & (main_df['score']<=u_bound)
-    main_df.loc[mask, 'dupe'] = 'CHECK'
-    mask = main_df['dupe'].isna()
+    main_df.loc[mask, 'score'] = 100
+
+    mask = main_df['score'] > u_bound
     main_df.loc[mask,'dupe'] = 'TRUE'
 
-def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array: np.array, dsu: object):
+    mask = (main_df['score'] >= l_bound) & (main_df['score']<=u_bound)
+    main_df.loc[mask, 'dupe'] = 'CHECK'
+
+    mask = (main_df['score'] < l_bound) | (main_df['score'].isna())
+    main_df.loc[mask,'dupe'] = 'FALSE'
+
+
+
+def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array: np.array, dsu: object, l_bound: float):
     
     upper = np.triu(final_matrix,k=1)
-    pairs = np.argwhere(upper >= 0)
+    pairs = np.argwhere(upper >= l_bound)
     if len(pairs) <1:
         return
     
@@ -63,12 +70,10 @@ def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array:
     np.maximum.at(score_array, block_df.index[rows], scores)
     np.maximum.at(score_array, block_df.index[columns], scores)
     
-def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: str, bounds: list[dict], main_match_criteria: str, nickname_col: Optional[str] = None):
+def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: str, main_match_criteria: str, u_bound: Optional[float] = 95.0, l_bound: Optional[float] = 80.0, nickname_col: Optional[str] = None):
     
     score_array = np.zeros(len(main_df))
 
-    u_bound = bounds[1]['u_bound']
-    l_bound = bounds[0]['l_bound']
     
     if nickname_col:
         nn = NickNamer()
@@ -128,18 +133,18 @@ def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: s
         
         # Creates a matrix with how many fields return a matching score of over 95.
         # Creating a count for how many fields the two comparing records have in common
-        hits = {k:v >= 95 for k,v in matrices.items()}
+        hits = {k:v >= u_bound for k,v in matrices.items()}
         hit_count = sum(v.astype(int) for v in hits.values())
 
         
-        gate_mask = (matrices[main_match_criteria] >= 95.0) & (hit_count >= 2)
+        gate_mask = (matrices[main_match_criteria] >= u_bound) & (hit_count >= 2)
 
 
         final_matrix = np.where(gate_mask, final_matrix, 0)
             
 
         # Assign scores to df
-        assign_scores(final_matrix, block_df, score_array, dsu)
+        assign_scores(final_matrix, block_df, score_array, dsu, l_bound)
 
 
     mask = score_array > 0
