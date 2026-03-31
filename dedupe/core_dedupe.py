@@ -46,10 +46,10 @@ def label_df(main_df: pd.DataFrame, l_bound: Optional[float] = 80.0, u_bound: Op
     mask = main_df['dupe'].isna()
     main_df.loc[mask,'dupe'] = 'TRUE'
 
-def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array: np.array, dsu: object, u_bound: float, l_bound: float):
+def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array: np.array, dsu: object):
     
     upper = np.triu(final_matrix,k=1)
-    pairs = np.argwhere(upper >= l_bound)
+    pairs = np.argwhere(upper >= 0)
     if len(pairs) <1:
         return
     
@@ -139,12 +139,13 @@ def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: s
             
 
         # Assign scores to df
-        assign_scores(final_matrix, block_df, score_array, dsu, u_bound,l_bound)
+        assign_scores(final_matrix, block_df, score_array, dsu)
 
 
     mask = score_array > 0
     main_df.loc[mask,'score'] = score_array[mask]
     
+
     label_df(main_df,l_bound=l_bound, u_bound=u_bound)
    
     return main_df
