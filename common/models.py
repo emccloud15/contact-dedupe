@@ -22,6 +22,7 @@ class ClientConfig(BaseModel):
     FILE_PATH: Path
     COLUMNS:  Columns
     BLOCKING: str
+    NICKNAME: Optional[str] = None
     BOUNDS: Optional[list[dict[str,float]]] = None
 
 class SystemConfig(BaseModel):
