@@ -41,7 +41,6 @@ def column_weights(cleaned_cols: list[str], client_cfg: object) -> dict:
 def test_weights(weighted_cols: dict):
 
     total_weight = sum(weighted_cols.values())
-    logger.info(f"weight is: {total_weight}")
     
     if total_weight != 1.0:
         
@@ -86,6 +85,7 @@ def run_dedupe(client_cfg: BaseModel) -> None:
     #Load file into df
     original_df = load_data_df(client_cfg.FILE_PATH)
 
+    logger.info("Normalizing the data")
     #Normalize the df
     normalized_df = normalize_df(original_df, client_cfg.COLUMNS)    
 
@@ -100,6 +100,7 @@ def run_dedupe(client_cfg: BaseModel) -> None:
     # Instantiate DSU 
     dsu = DSU(len(normalized_df))
 
+    logger.info("Running strict dedupe")
     # Run strict dedupe
     main_df = run_strict_dedupe(normalized_df, cols, dsu)
     
@@ -109,15 +110,25 @@ def run_dedupe(client_cfg: BaseModel) -> None:
     weighted_cols = column_weights(cols,client_cfg)
 
    
-
     # Ensure given weights add to 1.0
     # Gives user choice to auto-balance or exit. THIS FUNCTION CAN EXIT THE PROGRAM
     weighted_cols = test_weights(weighted_cols)
 
 
+    
     # Run fuzzy dedupe
-    main_df = run_fuzzy_dedupe(main_df, weighted_cols, dsu, client_cfg.BLOCKING, client_cfg.BOUNDS, client_cfg.MAIN_MATCH_CRITERIA, client_cfg.NICKNAME)
- 
+    logger.info("Running fuzzy dedupe")
+    main_df = run_fuzzy_dedupe(main_df=main_df, 
+                               cols=weighted_cols, 
+                               dsu=dsu, 
+                               blocking=client_cfg.BLOCKING, 
+                               u_bound=client_cfg.BOUNDS.u_bound, 
+                               l_bound=client_cfg.BOUNDS.l_bound, 
+                               main_match_criteria=client_cfg.MAIN_MATCH_CRITERIA, 
+                               nickname_col=client_cfg.NICKNAME)
+    
+    logger.info("Assigning matching ids")
     main_df['root'] = main_df.index.map(dsu.find)
     main_df['match_id'] = main_df['root'].map(main_df['legacycontactid'])
     main_df.sort_values('match_id').to_csv('after_fuzzy.csv',index=False)
+    logger.info("Dedupe complete")
