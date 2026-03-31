@@ -1,17 +1,18 @@
 import pandas as pd
+from pandas.core.groupby import DataFrameGroupBy
 import numpy as np
 from rapidfuzz import process, fuzz, distance
 from typing import Optional
 from itertools import combinations
 from nicknames import NickNamer
-import sys
 
+from dedupe.dsu import DSU
 from common.exceptions import ConfigError
 from common.logger import get_logger
 logger = get_logger(__name__)
 
 
-def run_strict_dedupe(normalized_df: pd.DataFrame, cols: list[str], dsu: object):
+def run_strict_dedupe(normalized_df: pd.DataFrame, cols: list[str], dsu: DSU):
     normalized_df.loc[:,'dupe'] = pd.NA
     normalized_df.loc[:,'score'] = pd.NA
     # Dedupe on each of the client chosen normalized columns
@@ -53,7 +54,7 @@ def label_df(main_df: pd.DataFrame, l_bound: float, u_bound: float):
 
 
 
-def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array: np.array, dsu: object, l_bound: float):
+def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array: np.array, dsu: DSU, l_bound: float):
     
     upper = np.triu(final_matrix,k=1)
     pairs = np.argwhere(upper >= l_bound)
@@ -69,8 +70,13 @@ def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array:
 
     np.maximum.at(score_array, block_df.index[rows], scores)
     np.maximum.at(score_array, block_df.index[columns], scores)
-    
-def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: str, main_match_criteria: str, u_bound: Optional[float] = 95.0, l_bound: Optional[float] = 80.0, nickname_col: Optional[str] = None):
+
+
+
+
+
+
+def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: DSU, blocks: DataFrameGroupBy, main_match_criteria: str, u_bound: Optional[float] = 95.0, l_bound: Optional[float] = 80.0, nickname_col: Optional[str] = None):
     
     score_array = np.zeros(len(main_df))
 
@@ -80,8 +86,8 @@ def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: object, blocking: s
 
 
     # Looping through blocks to fuzzy on. Blocking can be changed in client yaml
-    dupe_df = main_df[main_df['count']==1]
-    for _,block_df in dupe_df.groupby(dupe_df[blocking].str[:3]):
+
+    for _,block_df in blocks:
         n = len(block_df)
         if n < 2:
             continue
