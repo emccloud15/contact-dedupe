@@ -102,8 +102,6 @@ def run_dedupe(client_cfg: BaseModel) -> None:
 
     # Run strict dedupe
     main_df = run_strict_dedupe(normalized_df, cols, dsu)
-
-    print(main_df['clean_address:address'])
     
     cols = secondary
     
@@ -118,7 +116,7 @@ def run_dedupe(client_cfg: BaseModel) -> None:
 
 
     # Run fuzzy dedupe
-    main_df = run_fuzzy_dedupe(main_df, weighted_cols, dsu, client_cfg.BLOCKING, client_cfg.BOUNDS)
+    main_df = run_fuzzy_dedupe(main_df, weighted_cols, dsu, client_cfg.BLOCKING, client_cfg.BOUNDS, client_cfg.NICKNAME)
  
     main_df['root'] = main_df.index.map(dsu.find)
     main_df['match_id'] = main_df['root'].map(main_df['legacycontactid'])

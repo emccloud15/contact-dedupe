@@ -8,6 +8,11 @@ from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
 
 
 
+# For fuzzy later. If there could be nicknames causing duplicates. "Christina" "Tina". This takes every name from the provided name column (typically the firstname column)
+# Does a lookup in the python nicknames package dictionary and replaces nicknames with their name. If "Tina" is in the name column it will be replaced with "Christina"
+
+
+
 # This function is used when calling the cleaning function incase a column name in the yaml is not actually in the dataframe
 def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str],str]):
     try:
@@ -27,8 +32,6 @@ def normalize_contact_method(df: pd.DataFrame, data: object, contact_type: str, 
     df = df.copy()
     if name_cols:
         names =[safe_apply(df,name, clean_name) for name in name_cols]
-
-
     
 
     if contact_type == 'address':
@@ -105,6 +108,7 @@ def normalize_df(df: pd.DataFrame, data: object) -> pd.DataFrame:
     # Checks which name columns to include in normalized columns
     if data.name:
         name_cols = [col for col in data.name.columns]
+    
     
     contact_types = [field for field,value in data if value is not None]
 
