@@ -2,9 +2,12 @@ import pandas as pd
 import sys
 from typing import Callable, Optional
 
+from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
+
+from common.models import Columns
 from common.exceptions import ConfigError
 
-from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
+
 
 
 
@@ -27,7 +30,7 @@ def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str],str]):
 # Only creates rows when there is no null value for one of the fields being combined. 
 # For example if name is John Smith and phone is null instead of getting johnsmith|
 # the row would be null. If name is John Smith and phone is (123)-7645555 the result is johnsmith|1237645555
-def normalize_contact_method(df: pd.DataFrame, data: object, contact_type: str, contact_cols: list[str], name_cols: Optional[list[str]] = None) -> pd.DataFrame:
+def normalize_contact_method(df: pd.DataFrame, data: Columns, contact_type: str, contact_cols: list[str], name_cols: Optional[list[str]] = None) -> pd.DataFrame:
 
     df = df.copy()
     if name_cols:
@@ -95,7 +98,7 @@ def normalize_contact_method(df: pd.DataFrame, data: object, contact_type: str, 
        
     return df[[c for c in df.columns if c.startswith("clean_")]]
 
-def normalize_helper(df: pd.DataFrame, data: object, contact_type: str, name_cols: Optional[list[str]] = None):
+def normalize_helper(df: pd.DataFrame, data: Columns, contact_type: str, name_cols: Optional[list[str]] = None):
     data = getattr(data, contact_type)
     if not data.include_name:
         name_cols = None
@@ -104,7 +107,7 @@ def normalize_helper(df: pd.DataFrame, data: object, contact_type: str, name_col
 
 
 # Step 1. Uncleaned Original Data Frame passed as well as the columns from the client yaml as data
-def normalize_df(df: pd.DataFrame, data: object) -> pd.DataFrame:   
+def normalize_df(df: pd.DataFrame, data: Columns) -> pd.DataFrame:   
     # Checks which name columns to include in normalized columns
     if data.name:
         name_cols = [col for col in data.name.columns]
