@@ -39,7 +39,6 @@ class ClientConfig(BaseModel):
                     allowed.extend([col for col,_ in field_value.weight])
                 else:
                     allowed.append('address')
-        print(allowed)
         if self.MAIN_MATCH_CRITERIA not in allowed:
             raise ConfigError(f"The MAIN_MATCH_CRITERIA value must be one of {allowed}.")
         return self
