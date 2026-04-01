@@ -1,7 +1,7 @@
 import pandas as pd
 import sys
-
-
+from pathlib import Path
+from datetime import datetime
 
 from dedupe.dsu import DSU
 from dedupe.normalize import normalize_df
@@ -23,7 +23,6 @@ def column_weights(cleaned_cols: list[str], client_cfg: ClientConfig) -> dict:
     # Separate dictionary unioned in becuase the structure of the name weights in the cfg file is different to allow for weights per name column
     return {col: getattr(client_cfg.COLUMNS,col.split(':')[1].strip()).weight for col in cleaned_cols} | {name_col:weight for name_col,weight in client_cfg.COLUMNS.name.weight}
     
-
 # Gives user choice to auto-balance or exit. THIS FUNCTION CAN EXIT THE PROGRAM
 def test_weights(weighted_cols: dict):
 
@@ -61,13 +60,12 @@ def test_weights(weighted_cols: dict):
                 sys.exit(0)
     return weighted_cols
  
-
+# Create either grouping for entire dedupe process or blocking for fuzzy only
 def create_block(main_df: pd.DataFrame, blocking_rules: Blocking, fuzzy: bool):
     if fuzzy:
         dupe_df = main_df[main_df['count'] == 1]
     else:
         dupe_df = main_df
-
 
     if blocking_rules.portion is None or blocking_rules.type.lower() == 'state':
         return dupe_df.groupby(dupe_df[blocking_rules.column])
@@ -78,19 +76,30 @@ def create_block(main_df: pd.DataFrame, blocking_rules: Blocking, fuzzy: bool):
         else:
             return dupe_df.groupby(dupe_df[blocking_rules.column].str[-3:])
         
+def create_final_file(df: pd.DataFrame, original_cols: list[str], dsu: DSU, match_field: str, output_path: Path, client_name: str):
+    df['root'] = df.index.map(dsu.find)
+    try:
+        df['match_id'] = df['root'].map(df[match_field])
+    except KeyError:
+        raise ConfigError(f"{match_field} not found in csv file columns. Check MATCH_FIELD assignment in the client yaml.")
+    today = datetime.today().date()
 
-        
-            
+    # Master file output
+    df.sort_values('match_id').to_csv(f'{output_path}/{client_name}_master_{today}_nogroup.csv',index=False)
 
+    # Check file output
+    check_ids = df[df['dupe']=='CHECK']['root'].to_list()
+    df[df['root'].isin(check_ids)].sort_values('match_id').to_csv(f'{output_path}/{client_name}_check_{today}.csv',index=False)
 
-    
-
-
+    # Cleaned output
+    original_cols.append('match_id')
+    df[df['count']==1][original_cols].sort_values('match_id').to_csv(f'{output_path}/{client_name}_cleaned_{today}.csv',index=False)
 
 def run_dedupe(client_cfg: ClientConfig) -> None:
     
     # Load file into df
     original_df = load_data_df(client_cfg.FILE_PATH)
+    original_cols = original_df.columns.to_list()
 
 
     # Normalize the df
@@ -105,26 +114,36 @@ def run_dedupe(client_cfg: ClientConfig) -> None:
     cols = primary if primary else secondary
     
 
-    blocks = create_block(normalized_df, client_cfg.BLOCKING, False)
-    print(len(blocks))
-    sys.exit()
-
-
+    # Group for client required strict group deduping
+    try:
+        group = create_block(normalized_df, client_cfg.BLOCKING, False)
+    except KeyError:
+        raise ConfigError(f"BLOCKING column {client_cfg.BLOCKING.column} is not in the csv file. Please fix in the yaml")
+   
     # Run strict dedupe
-    main_df = run_strict_dedupe(normalized_df, cols, dsu, blocks)
+    if client_cfg.GROUP_BY:
+        temp_cols = cols + [f"{col}_dupe" for col in cols] + ['dupe','score','count']
+        results =[]
+        for _,group_df in group:
+            results.append(run_strict_dedupe(group_df, cols, dsu))
 
+        result_df = pd.concat(results) 
+        normalized_df.loc[result_df.index, temp_cols] = result_df[temp_cols]
+        main_df = normalized_df
+    else:
+        main_df = run_strict_dedupe(normalized_df, cols, dsu)
     
+
     # Handle column set up for fuzzy
     cols = secondary
     # Create dictionary for column weights. Specified in client config
     weighted_cols = column_weights(cols,client_cfg)
-
     # Ensure given weights add to 1.0
     weighted_cols = test_weights(weighted_cols)
 
-    blocks = create_block(main_df, client_cfg.BLOCKING, True)
 
     # Run fuzzy dedupe
+    blocks = create_block(main_df, client_cfg.BLOCKING, True)
     main_df = run_fuzzy_dedupe(main_df=main_df, 
                                cols=weighted_cols, 
                                dsu=dsu, 
@@ -136,8 +155,12 @@ def run_dedupe(client_cfg: ClientConfig) -> None:
     
 
 
-
-    main_df['root'] = main_df.index.map(dsu.find)
-    main_df['match_id'] = main_df['root'].map(main_df['legacycontactid'])
-    main_df.sort_values('match_id').to_csv('newest_fuzzy.csv',index=False)
+    create_final_file(df=main_df, 
+                      original_cols=original_cols,
+                      dsu=dsu, 
+                      match_field=client_cfg.MATCH_FIELD,
+                      output_path=client_cfg.OUTPUT_PATH,
+                      client_name=client_cfg.CLIENT_NAME)
+    
+    
     logger.info("Dedupe complete")

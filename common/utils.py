@@ -3,9 +3,10 @@ import pandas as pd
 
 from pydantic import ValidationError
 
+from common.logger import get_logger
 from common.exceptions import DataLoadError, ConfigError
 from common.models import ClientConfig, SystemConfig
-
+logger = get_logger(__name__)
 
 # Load config for program with client YAML file path
 def load_sys_config(file_path: str) -> dict:
@@ -31,6 +32,7 @@ def load_client_config(file_path: str):
         raise DataLoadError(f"Failed to load client config file: {file_path}") from e
     try:
         client_settings = ClientConfig(**raw_config)
+        logger.info(f"{client_settings.CLIENT_NAME} config loaded")
     except ValidationError as e:
         raise ConfigError(f"Invalid client configuration. Check file for labeling errors: {file_path}") from e
     return client_settings

@@ -3,6 +3,3 @@ class DataLoadError(Exception):
 
 class ConfigError(Exception):
     pass
-
-class DataFrameError(Exception):
-    pass
