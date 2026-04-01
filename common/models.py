@@ -23,7 +23,7 @@ class Blocking(BaseModel):
     type: str
     column: str
     portion: Optional[str] = None
-    
+
 class Bounds(BaseModel):
     u_bound: float
     l_bound: float
@@ -55,19 +55,16 @@ class ClientConfig(BaseModel):
     
     @model_validator(mode='after')
     def validate_blocking(self):
-        allowed_type = ['zipcode','postal','statecode','state','id','name']
+        allowed_type = ['zipcode','state','id','name']
         allowed_portion = ['start', 'end']
-        allowed_cols = []
-        for _, field_value in self.COLUMNS:
-            if field_value is not None:
-                allowed_cols.extend([field_value.columns])
-        
-        if self.BLOCKING.type not in allowed_type:
-            raise ConfigError(f"BLOCKING type must be one of {allowed_type}")
+        allowed_cols = [col for _,field_value in self.COLUMNS if field_value is not None for col in field_value.columns]
+    
+        if self.BLOCKING.type.lower() not in allowed_type:
+            raise ConfigError(f"BLOCKING type {self.BLOCKING.type} must be one of {allowed_type}")
         elif self.BLOCKING.column not in allowed_cols:
-            raise ConfigError(f"BLOCKING column must be one of {allowed_cols}")
-        elif self.BLOCKING.portion is not None and self.BLOCKING.portion not in allowed_portion:
-            raise ConfigError(f"BLOCKING portion must be one of {allowed_portion}")
+            raise ConfigError(f"BLOCKING column {self.BLOCKING.column} must be one of {allowed_cols}")
+        elif self.BLOCKING.portion.lower() is not None and self.BLOCKING.portion not in allowed_portion:
+            raise ConfigError(f"BLOCKING portion {self.BLOCKING.portion} must be one of {allowed_portion}")
         else:
             return self
 
