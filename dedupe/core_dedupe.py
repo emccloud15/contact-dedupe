@@ -12,9 +12,10 @@ from common.logger import get_logger
 logger = get_logger(__name__)
 
 
-def run_strict_dedupe(normalized_df: pd.DataFrame, cols: list[str], dsu: DSU):
+def run_strict_dedupe(normalized_df: pd.DataFrame, cols: list[str], dsu: DSU, blocks: DataFrameGroupBy):
     normalized_df.loc[:,'dupe'] = pd.NA
     normalized_df.loc[:,'score'] = pd.NA
+ 
     # Dedupe on each of the client chosen normalized columns
     for col in cols:
         #duped_df = normalized_df[normalized_df['dupe'] != 'TRUE']
