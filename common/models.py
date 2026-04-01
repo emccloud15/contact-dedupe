@@ -33,8 +33,10 @@ class ClientConfig(BaseModel):
     CLIENT_NAME: str
     FILE_PATH: Path
     COLUMNS:  Columns
+    GROUP_BY: bool
     BLOCKING: Blocking
     MAIN_MATCH_CRITERIA: str
+    MATCH_FIELD: str
     NICKNAME: Optional[str] = None
     BOUNDS: Optional[Bounds] = None
     
@@ -67,7 +69,6 @@ class ClientConfig(BaseModel):
             raise ConfigError(f"BLOCKING portion {self.BLOCKING.portion} must be one of {allowed_portion}")
         else:
             return self
-
 
     
 class SystemConfig(BaseModel):
