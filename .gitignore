@@ -44,5 +44,8 @@ site-packages/
 # Node
 node_modules/
 
+# Sandbox
+*.ipynb
+
 
 
