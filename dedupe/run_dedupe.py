@@ -85,7 +85,7 @@ def create_final_file(df: pd.DataFrame, original_cols: list[str], dsu: DSU, matc
     today = datetime.today().date()
 
     # Master file output
-    df.sort_values('match_id').to_csv(f'{output_path}/{client_name}_master_{today}_nogroup.csv',index=False)
+    df.sort_values('match_id').to_csv(f'{output_path}/{client_name}_master_{today}.csv',index=False)
 
     # Check file output
     check_ids = df[df['dupe']=='CHECK']['root'].to_list()
