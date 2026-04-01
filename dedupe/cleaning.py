@@ -13,7 +13,10 @@ def clean_email(e):
 def clean_phone(p):
     if pd.isna(p):
         return pd.NA
-    return re.sub(r"\D",'',str(p))
+    cleaned = re.sub(r"\D",'',str(p))
+    if len(cleaned) == 11 and cleaned.startswith('1'):
+        cleaned = str(cleaned[1:])
+    return cleaned
 
 def clean_address(a):
     if pd.isna(a):

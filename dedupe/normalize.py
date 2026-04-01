@@ -80,7 +80,7 @@ def normalize_contact_method(df: pd.DataFrame, data: Columns, contact_type: str,
             mask = contact_cleaned.notna()
 
             parts = [contact_cleaned[mask].astype(str)]
-
+    
             if data.include_name:
                 parts += [s[mask].astype(str) for s in names]
                 joined_name = (
