@@ -8,7 +8,7 @@ from common.exceptions import ConfigError
 
 class ColumnTypeConfig(BaseModel):
     include_name: bool = False
-    weight: float
+    weight: Optional[float] = 0.0
     columns: list[str] = []
 class NameColumnTypeConfig(BaseModel):
     columns: list[str] = []

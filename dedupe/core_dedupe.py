@@ -76,7 +76,7 @@ def assign_scores(final_matrix: np.ndarray, block_df: pd.DataFrame, score_array:
     np.maximum.at(score_array, block_df.index[columns], scores)
 
 
-def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: DSU, blocks: DataFrameGroupBy, main_match_criteria: str, u_bound: Optional[float] = 95.0, l_bound: Optional[float] = 80.0, nickname_col: Optional[str] = None):
+def run_fuzzy_dedupe(main_df: pd.DataFrame, cols: dict, dsu: DSU, blocks: DataFrameGroupBy, main_match_criteria: str, u_bound: Optional[float] = 90.0, l_bound: Optional[float] = 75.0, nickname_col: Optional[str] = None):
     
     score_array = np.zeros(len(main_df))
 
