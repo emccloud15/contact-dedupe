@@ -1,15 +1,27 @@
 import sys
-from common.utils import load_sys_config, load_client_config
+import argparse
+
+
+from common.utils import load_client_config
 from common.logger import get_logger
 from dedupe.run_dedupe import run_dedupe
 from common.exceptions import DataLoadError, ConfigError
 
 logger = get_logger(__name__)
 
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Dedupe Tool")
+    parser.add_argument(
+        "--yaml", "-y", type=str, required=True, help="Input client yaml path"
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
     try:
-        system_config = load_sys_config('settings.yaml')
-        client_config = load_client_config(system_config.CLIENT_YAML)
+        client_config = load_client_config(args.yaml)
         run_dedupe(client_config)
     except DataLoadError as e:
         logger.exception(f"Dedupe failed during loading data: {e}")
@@ -19,5 +31,5 @@ def main():
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
