@@ -1,25 +1,31 @@
 import pandas as pd
 import re
 
-def clean_name(n):
-    return re.sub(r"[^a-zA-Z]",'', str(n)).lower()
+from typing import Optional
 
-def clean_email(e):
+
+def clean_name(n: str) -> str:
+    return re.sub(r"[^a-zA-Z]", "", str(n)).lower()
+
+
+def clean_email(e: str) -> Optional[str]:
     if pd.isna(e):
         return pd.NA
     e = str(e)
-    return e.strip().lower().replace(' ','')
+    return e.strip().lower().replace(" ", "")
 
-def clean_phone(p):
+
+def clean_phone(p: str | int | float) -> Optional[str]:
     if pd.isna(p):
         return pd.NA
-    cleaned = re.sub(r"\D",'',str(p))
-    if len(cleaned) == 11 and cleaned.startswith('1'):
+    cleaned = re.sub(r"\D", "", str(p))
+    if len(cleaned) == 11 and cleaned.startswith("1"):
         cleaned = str(cleaned[1:])
     return cleaned
 
-def clean_address(a):
+
+def clean_address(a: str) -> Optional[str]:
     if pd.isna(a):
         return pd.NA
     a = str(a)
-    return re.sub(r'[\s\"\'\-,]','',str(a)).lower()
+    return re.sub(r"[\s\"\'\-,]", "", str(a)).lower()
