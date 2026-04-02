@@ -1,6 +1,7 @@
 import logging
 
-def get_logger(name=None):
+
+def get_logger(name: str = None) -> logging.Logger:
     logger = logging.getLogger(name or "dedupe")
     logger.setLevel(logging.DEBUG)
 
@@ -11,10 +12,13 @@ def get_logger(name=None):
         ch = logging.StreamHandler()
         ch.setLevel(logging.DEBUG)
 
-        fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        formatter = logging.Formatter(fmt)
-        fh.setFormatter(formatter)
-        ch.setFormatter(formatter)
+        fh_fmt = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        fh_formatter = logging.Formatter(fh_fmt)
+        fh.setFormatter(fh_formatter)
+
+        ch_fmt = "%(levelname)s - %(message)s"
+        ch_formatter = logging.Formatter(ch_fmt)
+        ch.setFormatter(ch_formatter)
 
         logger.addHandler(fh)
         logger.addHandler(ch)
