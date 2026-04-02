@@ -64,7 +64,9 @@ def test_weights(weighted_cols: dict) -> dict:
 
 
 # Create either grouping for entire dedupe process or blocking for fuzzy only
-def create_block(main_df: pd.DataFrame, blocking_rules: Blocking, fuzzy: bool) -> DataFrameGroupBy:
+def create_block(
+    main_df: pd.DataFrame, blocking_rules: Blocking, fuzzy: bool
+) -> DataFrameGroupBy:
     if fuzzy:
         dupe_df = main_df[main_df["count"] == 1]
     else:

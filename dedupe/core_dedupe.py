@@ -7,8 +7,6 @@ from itertools import combinations
 from nicknames import NickNamer
 
 from dedupe.dsu import DSU
-from dedupe.cleaning import clean_name
-from dedupe.normalize import safe_apply
 
 from common.logger import get_logger
 

@@ -17,7 +17,7 @@ def parse_args():
         "--yaml", "-y", type=str, required=True, help="Input client yaml path"
     )
     parser.add_argument(
-        "--input", "-i", type=str, required=True, help="File path to be deduplicated" 
+        "--input", "-i", type=str, required=True, help="File path to be deduplicated"
     )
     parser.add_argument(
         "--output", "-o", type=str, required=True, help="Directory for output files"
