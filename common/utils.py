@@ -33,12 +33,16 @@ def load_data_df(file_path: str) -> pd.DataFrame:
     if file_path.suffix == ".csv":
         try:
             df = pd.read_csv(file_path)
+        except FileNotFoundError as e:
+            raise DataLoadError(f"File path not found: {file_path}") from e
         except Exception as e:
             raise DataLoadError(f"Failed to load csv data file: {file_path}") from e
 
     else:
         try:
             df = pd.read_excel(file_path, engine="openpyxl")
+        except FileNotFoundError as e:
+            raise DataLoadError(f"File path not found: {file_path}") from e
         except Exception as e:
             raise DataLoadError(f"Failed to load xlsx data file: {file_path}") from e
     return df
