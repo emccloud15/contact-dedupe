@@ -115,10 +115,10 @@ def create_final_file(
     )
 
 
-def run_dedupe(client_cfg: ClientConfig) -> None:
+def run_dedupe(client_cfg: ClientConfig, input_path: Path, output_path: Path) -> None:
 
     # Load file into df
-    original_df = load_data_df(client_cfg.FILE_PATH)
+    original_df = load_data_df(input_path)
     original_cols = original_df.columns.to_list()
 
     # Normalize the df
@@ -185,7 +185,7 @@ def run_dedupe(client_cfg: ClientConfig) -> None:
         original_cols=original_cols,
         dsu=dsu,
         match_field=client_cfg.MATCH_FIELD,
-        output_path=client_cfg.OUTPUT_PATH,
+        output_path=output_path,
         client_name=client_cfg.CLIENT_NAME,
     )
 

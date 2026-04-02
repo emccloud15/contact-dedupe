@@ -1,5 +1,6 @@
 import yaml
 import pandas as pd
+from pathlib import Path
 
 from pydantic import ValidationError
 
@@ -29,7 +30,7 @@ def load_client_config(file_path: str) -> dict:
     return client_settings
 
 
-def load_data_df(file_path: str) -> pd.DataFrame:
+def load_data_df(file_path: Path) -> pd.DataFrame:
     if file_path.suffix == ".csv":
         try:
             df = pd.read_csv(file_path)

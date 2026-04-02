@@ -37,8 +37,6 @@ class Bounds(BaseModel):
 
 class ClientConfig(BaseModel):
     CLIENT_NAME: str
-    FILE_PATH: Path
-    OUTPUT_PATH: Path
     COLUMNS: Columns
     GROUP_BY: bool
     BLOCKING: Blocking
