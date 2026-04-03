@@ -7,9 +7,16 @@ The contact dedupe tool helps deduplicate messy contact record files. This was s
 ```bash
 git clone https://github.com/emccloud15/contact-dedupe
 cd contact-dedupe
-python -m .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
+## Dependencies
+- [pandas](https://pandas.pydata.org/)
+- [rapidfuzz](https://github.com/rapidfuzz/RapidFuzz)
+- [pydantic](https://docs.pydantic.dev/)
+- [nicknames](https://pypi.org/project/nicknames/)
+  
 ## Configuration
 A specific yaml configuration is required to run the tool. The config file is used to specify field names, weights, and blocking as well as some other customizable settings.  
 
@@ -23,7 +30,7 @@ python run.py --yaml path/to/config.yaml --input path/to/duplicated_contacts.csv
 ## Output
 The output is three files. The first is a master file which contains every original record with T/F fields to indicate what field a record is duplicated on, an assigned root id for that record, as well as the fuzzy score for each record. The second file is a deduplicated version of the original contact file. The last file contains fuzzy matches that were possible duplicates, but need manual checking to confirm. The records that need to be checked returned fuzzy scores within a configurable score range (default between: 75-90%).
 
-## HOW IT WORKS
+## How It Works
 This tool deduplicates in two main phases. 
 -	Find duplicates based on exact matches
 -	Identify duplicates using a fuzzy algorithm to find non exact duplicates. 
@@ -33,10 +40,10 @@ The fuzzy phase uses blocking to dramatically reduce the number of record to rec
 After each phase matching records are grouped and assigned a master record by implementing the Disjoint Set Union data structure and algorithm. DSU creates and stores a collection of disjoint (non-overlapping) sets. This allows multiple duplicated records to tie to one parent record. 
 
 
-## LIMITATIONS
+## Limitations
 The weight for each field is manually set in the yaml file. It can be difficult to set an accurate weight given how differently each field contributes to determining a duplicate.
 
-The weight specified will be equally divided amongst that contact type’s columns, so the total column’s weights add to 1.0. Only the name fields currently have the option to specify different weights between each specific name field. This will be updated in v2.
+The weight specified will be equally distributed amongst that contact type’s columns, so the total column’s weights add to 1.0. Only the name fields currently have the option to specify different weights between each specific name field. This will be updated in v2.
 
 If a record has a null value for a field, that field is scored as a 0 percent match and potentially lowers the chance for correctly identifying a duplicate. In future versions the weights will be auto adjusted to account for this. 
 
@@ -50,4 +57,22 @@ Another potential limitation is first names can be very similar for two separate
 | 3  | Julian  | Jones | jjones@gmail.com |
 | 4  | Julius  | Jones | jjones@gmail.com |
 
-Record ID 1 & 2 return approximately as a 67 percent match as well as records 3 & 4 with the WRatio and JaroWinkler algorithms. However, we know Bill is a classic nickname for William which make us believe records 1 & 2 are duplicated records. But we can see Julian and Julius are two unique unrelated names and are therefore most likely not duplicates. This is mitigated with the use of the python library [nicknames](https://pypi.org/project/nicknames/). At the start of the fuzzy matching phase a nickname cache is created. When the first name field is compared, each name is first checked in the nickname cache and a set of related nicknames is assigned to both names being compared. If the intersecting set between the related nickname sets is not null then the name field on the two records is treated as a match, thus helping boost the score of a potential duplicate. 
+Record ID 1 & 2 return approximately as a 67 percent match as well as records 3 & 4 with the WRatio and JaroWinkler algorithms. However, we know Bill is a classic nickname for William which suggests records 1 & 2 are duplicated records. But we can see Julian and Julius are two unique unrelated names and are therefore most likely not duplicates. This is mitigated with the use of the python library [nicknames](https://pypi.org/project/nicknames/). At the start of the fuzzy matching phase a nickname cache is created. When the first name field is compared, each name is first checked in the nickname cache and a set of related nicknames is assigned to both names being compared. If the intersecting set between the related nickname sets is non-empty then the name field on the two records is treated as a match, thus helping boost the score of a potential duplicate. 
+
+## Project Structure
+contact-dedupe/
+    run.py
+    common/
+        models.py
+        utils.py
+        exceptions.py
+        logger.py
+    deudpe/
+        run_dedupe.py
+        core_dedupe.py
+        normalize.py
+        cleaning.py
+        dsu.py
+    client_template.yaml
+        
+        
