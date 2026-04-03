@@ -61,18 +61,18 @@ Record ID 1 & 2 return approximately as a 67 percent match as well as records 3 
 
 ## Project Structure
 contact-dedupe/
-    run.py
-    common/
-        models.py
-        utils.py
-        exceptions.py
-        logger.py
-    deudpe/
-        run_dedupe.py
-        core_dedupe.py
-        normalize.py
-        cleaning.py
-        dsu.py
-    client_template.yaml
+├── run.py                        # Entry point, argument parsing
+├── common/
+│   ├── models.py                 # Pydantic config models and validators
+│   ├── utils.py                  # Config and data loading
+│   ├── exceptions.py             # Custom exceptions
+│   └── logger.py                 # Logging setup
+├── dedupe/
+│   ├── run_dedupe.py             # Orchestrates the full dedupe pipeline
+│   ├── core_dedupe.py            # Strict and fuzzy deduplication logic
+│   ├── normalize.py              # Field normalization
+│   ├── cleaning.py               # String cleaning functions
+│   └── dsu.py                    # Disjoint Set Union implementation
+└── example_config.yaml           # Example configuration file
         
         
