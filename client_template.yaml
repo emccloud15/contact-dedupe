@@ -1,0 +1,62 @@
+CLIENT_NAME: # REQUIRED This will be used to check the settings file is loading the correct client file & for the output file name
+
+COLUMNS: # REQUIRED 4 possible columns keys. phone, email, address, name. at least one of these is required. If any is included then all the fields within that type are required except weight
+         # Each phone, email, and name field will be deduped separately. The address columns will always be combined and deduped as one. 
+         # For example there could be 'Home Phone', 'Work Phone', 'Other Email', 'Email1' each of these fields will be checked for duplicates
+         # whereas for the address columns 'Address Line 1', 'City', 'State', 'Postal' will always be combined. 
+  phone: 
+    include_name: # REQUIRED -> bool field True/False: this determines if during the strict dedupe phase you want a name column included in the field being deduped on. 
+                  # For example without name -> phone_column1: 1(234)-000-5555 will become 2340005555. With name it will become -> name_column1: John name_column2: Smith
+                  # 2340005555|johnsmith|john|smith 
+    weight: 0.12  # Optional -> float field: The weight is per column in the group. So for weight 0.12 each phone column will be weighted at 0.12
+                  # Default will auto balance each weight to equal amounts
+
+    columns: # REQUIRED -> string field: the exact names of the field names in the file you want deduped on
+    - phone_column1
+    - phone_column2
+  
+  email:
+    include_name: # True/False
+    weight: 0.16
+    columns:
+    - email_column1
+  address: 
+    include_name: # True/False
+    weight: 0.28 # The address weight is for one address column as all of the address fields are combined into one address column
+    columns:
+    - Address1
+    - Address2
+    - City
+    - State
+    - ZipCode
+  name:
+    weight: 
+    - ['firstname_column',0.29] # Only used to weight each name column separately.
+    - ['lastname_column', 0.15]
+    columns:
+    - firstname_column
+    - lastname_column
+
+GROUP_BY: # REQUIRED -> bool field True/False: Used to strictly dedupe within the group specified by the BLOCKING column.
+
+NICKNAME: firstname_column # Optional -> string field: This needs to be a column name. During the fuzzy phase this column will be checked first against a cache of nicknames. 
+                             # Usually only the first name column should be used for the nickname lookup
+
+BLOCKING: # REQUIRED 
+  type: # one of ['zipcode','state','id','name']
+  column: zipcode_column # The column used to block on. IF GROUP_BY is True, this column will also be used as the group to dedupe strictly within.
+  portion: # either 'start', 'end' or leave blank for default of entire. For example if ZipCode is the column and portion is set to start then for zipcode 60187
+           # the block will be all zipcodes starting with 601. If set to end it will be zipcodes that end in 187
+  
+MAIN_MATCH_CRITERIA: # REQUIRED -> Column name: any field names specified in the columns above or 'address' for address
+
+MATCH_FIELD: unique_id_field # REQUIRED -> Column with a unique id. Used to identify master records in duplicate groups. 
+                            # For example: id: 1, Name: John Smith, Root: 1, id: 2, Name: John Smith, Root: 1
+
+BOUNDS: # Optional -> Upper and lower bounds for determining if a fuzzy record is a match or needs to be checked. If no option is specified the default values are 75 and 90
+  u_bound: 90
+  l_bound: 75
+
+
+
+
