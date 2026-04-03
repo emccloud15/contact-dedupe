@@ -58,21 +58,3 @@ Another potential limitation is first names can be very similar for two separate
 | 4  | Julius  | Jones | jjones@gmail.com |
 
 Record ID 1 & 2 return approximately as a 67 percent match as well as records 3 & 4 with the WRatio and JaroWinkler algorithms. However, we know Bill is a classic nickname for William which suggests records 1 & 2 are duplicated records. But we can see Julian and Julius are two unique unrelated names and are therefore most likely not duplicates. This is mitigated with the use of the python library [nicknames](https://pypi.org/project/nicknames/). At the start of the fuzzy matching phase a nickname cache is created. When the first name field is compared, each name is first checked in the nickname cache and a set of related nicknames is assigned to both names being compared. If the intersecting set between the related nickname sets is non-empty then the name field on the two records is treated as a match, thus helping boost the score of a potential duplicate. 
-
-## Project Structure
-contact-dedupe/
-├── run.py                        # Entry point, argument parsing
-├── common/
-│   ├── models.py                 # Pydantic config models and validators
-│   ├── utils.py                  # Config and data loading
-│   ├── exceptions.py             # Custom exceptions
-│   └── logger.py                 # Logging setup
-├── dedupe/
-│   ├── run_dedupe.py             # Orchestrates the full dedupe pipeline
-│   ├── core_dedupe.py            # Strict and fuzzy deduplication logic
-│   ├── normalize.py              # Field normalization
-│   ├── cleaning.py               # String cleaning functions
-│   └── dsu.py                    # Disjoint Set Union implementation
-└── example_config.yaml           # Example configuration file
-        
-        
