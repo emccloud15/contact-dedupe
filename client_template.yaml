@@ -37,12 +37,11 @@ COLUMNS: # REQUIRED 4 possible columns keys. phone, email, address, name. at lea
     - firstname_column
     - lastname_column
 
-GROUP_BY: # REQUIRED -> bool field True/False: Used to strictly dedupe within the group specified by the BLOCKING column.
-
 NICKNAME: firstname_column # Optional -> string field: This needs to be a column name. During the fuzzy phase this column will be checked first against a cache of nicknames. 
                              # Usually only the first name column should be used for the nickname lookup
 
 BLOCKING: # REQUIRED 
+  strict: True # If blocking should be used during the strict dedupeing phase as well. Will only find duplicates within the block
   type: # one of ['zipcode','state','id','name']
   column: zipcode_column # The column used to block on. IF GROUP_BY is True, this column will also be used as the group to dedupe strictly within.
   portion: # either 'start', 'end' or leave blank for default of entire. For example if ZipCode is the column and portion is set to start then for zipcode 60187

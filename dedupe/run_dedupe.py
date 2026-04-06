@@ -150,7 +150,7 @@ def run_dedupe(client_cfg: ClientConfig, input_path: Path, output_path: Path) ->
         )
 
     # Run strict dedupe
-    if client_cfg.GROUP_BY:
+    if client_cfg.BLOCKING.strict:
         temp_cols = cols + [f"{col}_dupe" for col in cols] + ["dupe", "score", "count"]
         results = []
         for _, group_df in group:
