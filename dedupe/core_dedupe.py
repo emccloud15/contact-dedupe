@@ -31,13 +31,17 @@ def run_strict_dedupe(df: pd.DataFrame, cols: list[str], dsu: DSU) -> pd.DataFra
         mask = df[col].duplicated(keep=False) & df[col].notna()
         df.loc[mask, f"{col}_dupe"] = "TRUE"
         df.loc[~mask, f"{col}_dupe"] = "FALSE"
-        df.loc[mask, "dupe"] = "TRUE"
 
         df.loc[mask, "count"] = df[mask].groupby(col).cumcount() + 1
 
     unassigned_mask = df["count"].isna()
-    df.loc[unassigned_mask, "dupe"] = "FALSE"
     df.loc[unassigned_mask, "count"] = 1
+
+    dupe_cols = [f"{col}_dupe" for col in cols]
+    mask = (df[dupe_cols] == 'TRUE').sum(axis=1) >=2
+    df.loc[mask,'dupe'] = 'TRUE'
+    df.loc[~mask, 'dupe'] = 'FALSE'
+    
 
     return df
 
