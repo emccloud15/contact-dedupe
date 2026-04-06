@@ -25,6 +25,7 @@ class Columns(BaseModel):
 
 
 class Blocking(BaseModel):
+    strict: bool
     type: str
     column: str
     portion: Optional[str] = None
@@ -38,7 +39,6 @@ class Bounds(BaseModel):
 class ClientConfig(BaseModel):
     CLIENT_NAME: str
     COLUMNS: Columns
-    GROUP_BY: bool
     BLOCKING: Blocking
     MAIN_MATCH_CRITERIA: str
     MATCH_FIELD: str
