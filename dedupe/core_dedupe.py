@@ -89,8 +89,8 @@ def run_fuzzy_dedupe(
     dsu: DSU,
     blocks: DataFrameGroupBy,
     main_match_criteria: str,
-    u_bound: Optional[float] = 90.0,
-    l_bound: Optional[float] = 75.0,
+    u_bound: float = 90.0,
+    l_bound: float = 75.0,
     nickname_col: Optional[str] = None,
 ) -> pd.DataFrame:
 
