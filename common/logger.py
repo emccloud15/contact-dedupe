@@ -1,7 +1,7 @@
 import logging
 
 
-def get_logger(name: str = None) -> logging.Logger:
+def get_logger(name: str | None) -> logging.Logger:
     logger = logging.getLogger(name or "dedupe")
     logger.setLevel(logging.DEBUG)
 

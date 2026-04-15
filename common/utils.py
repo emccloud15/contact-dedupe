@@ -12,7 +12,7 @@ logger = get_logger(__name__)
 
 
 # Transform client YAML to Pydantic model Settings
-def load_client_config(file_path: str) -> dict:
+def load_client_config(file_path: str) -> ClientConfig:
     if not file_path.endswith((".yaml", ".yml")):
         raise DataLoadError(f"File path is not a yaml file. Please try again")
     try:
