@@ -1,6 +1,6 @@
 import pandas as pd
 import sys
-from typing import Callable, Optional
+from typing import Callable
 
 from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
 
@@ -12,7 +12,7 @@ from common.exceptions import ConfigError
 
 
 # This function is used when calling the cleaning function incase a column name in the yaml is not actually in the dataframe
-def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str]) -> pd.Series:
+def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str | None]) -> pd.Series:
     try:
         return df[col].apply(clean_fn)
     except KeyError:
@@ -20,6 +20,9 @@ def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str]) -> pd
     except Exception as e:
         raise ConfigError(f"Error processing column: {col}: {e}")
 
+def combine_address(addresses: list[pd.Series]) -> pd.Series:
+    address_df = pd.concat(addresses, axis=1)
+    return address_df.apply(lambda row: "|".join(v for v in row if pd.notna(v)),axis=1).rename("address")
 
 # Step 3. Create the normalized columns provided by cleaning them and combining them into one column
 # Only creates rows when there is no null value for one of the fields being combined.
@@ -29,98 +32,63 @@ def normalize_contact_method(
     df: pd.DataFrame,
     data: Columns,
     contact_type: str,
-    contact_cols: list[str],
-    name_cols: Optional[list[str]] = None,
+    name_cache: dict
 ) -> pd.DataFrame:
-
+    
     df = df.copy()
-    if name_cols:
-        names = [safe_apply(df, name, clean_name) for name in name_cols]
+    clean_fns = {
+        'name': clean_name,
+        'address': clean_address,
+        'phone': clean_phone,
+        'email': clean_email
+    }
+    clean_fn = clean_fns[contact_type]
 
-    if contact_type == "address":
+    columns = [col for col in getattr(data, contact_type).columns]
 
-        address_series = [
-            safe_apply(df, address, clean_address) for address in contact_cols
-        ]
+    contact_type_series = [safe_apply(df=df, col=col, clean_fn=clean_fn) for col in columns]
 
-        address_df = pd.concat(address_series, axis=1)
+    if contact_type == 'name':
+        name_cache['names'] = contact_type_series
+  
+    if contact_type == 'address':
+        contact_type_series = [combine_address(contact_type_series)]
+    
+    for series in contact_type_series:
+        mask = series.notna()
+        parts = [series[mask]]
 
-        # Ensuring no composite keys are created with na values
-        mask = address_df.notna().any(axis=1)
-        joined_address = address_df[mask].apply(
-            lambda row: "|".join(row.dropna().astype(str)), axis=1
-        )
-        parts = [joined_address.astype(str)]
+        if contact_type != 'name' and getattr(data, contact_type).include_name:
 
-        if data.include_name:
-            parts += [s[mask].astype(str) for s in names]
-            joined_name = pd.concat(parts, axis=1).loc[mask].agg("|".join, axis=1)
+            parts += [s.loc[mask] for s in name_cache['names']]
+            joined_name = pd.concat(parts, axis=1).agg("|".join, axis=1)
 
-            df["clean_address:name_address"] = pd.NA
-            df.loc[mask, f"clean_address:name_address"] = joined_name
-
-        df["clean_address:address"] = pd.NA
-        df.loc[mask, "clean_address:address"] = joined_address
-
-        return df[[c for c in df.columns if c.startswith("clean_")]]
-
-    else:
-        if contact_type == "phone":
-            func = clean_phone
+            col = f'clean_{series.name}:name_{series.name}'
+            
+            df[col] = pd.NA
+            df.loc[mask, col] = joined_name
         else:
-            func = clean_email
-
-        for contact_col in contact_cols:
-
-            contact_cleaned = safe_apply(df, contact_col, func)
-
-            mask = contact_cleaned.notna()
-
-            parts = [contact_cleaned[mask].astype(str)]
-
-            if data.include_name:
-                parts += [s[mask].astype(str) for s in names]
-                joined_name = pd.concat(parts, axis=1).loc[mask].agg("|".join, axis=1)
-                df[f"clean_{contact_col}:name_{contact_type}"] = pd.NA
-                df.loc[mask, f"clean_{contact_col}:name_{contact_type}"] = joined_name
-
-            joined = pd.concat(parts, axis=1).loc[mask].agg("|".join, axis=1)
-
-            df[f"clean_{contact_col}:{contact_type}"] = pd.NA
-            df.loc[mask, f"clean_{contact_col}:{contact_type}"] = joined
+            col = f'clean_{series.name}:{series.name}'
+            df[col] = pd.NA
+            df.loc[mask, col] = series
 
     return df[[c for c in df.columns if c.startswith("clean_")]]
 
 
-def normalize_helper(
-    df: pd.DataFrame,
-    data: Columns,
-    contact_type: str,
-    name_cols: Optional[list[str]] = None,
-) -> Callable:
-    data = getattr(data, contact_type)
-    if not data.include_name:
-        name_cols = None
-    return normalize_contact_method(
-        df=df,
-        data=data,
-        contact_type=contact_type,
-        contact_cols=data.columns,
-        name_cols=name_cols,
-    )
-
 
 # Step 1. Uncleaned Original Data Frame passed as well as the columns from the client yaml as data
 def normalize_df(df: pd.DataFrame, data: Columns) -> pd.DataFrame:
-    # Checks which name columns to include in normalized columns
-    if data.name:
-        name_cols = [col for col in data.name.columns]
+    
+    # Ensures the name data is passed into the normalizing function first. That way i can clean the name data and store it
+    # to be used in case we want to append the names to the contact columns
 
-    contact_types = [field for field, value in data if value is not None]
+    contact_type_order = ['name','email','phone','address']
+    contact_types = [field for field,value in data if value]
+    contact_types.sort(key=lambda x: contact_type_order.index(x))
 
+    name_cache ={}
     final_cleaned_dfs = [
-        normalize_helper(df, data, contact_type, name_cols)
-        for contact_type in contact_types
-        if contact_type != "name"
-    ]
-    return df.join(final_cleaned_dfs)
+        normalize_contact_method(df=df, data=data, contact_type=contact_type, name_cache=name_cache)
+        for contact_type in contact_types]
+    
+    return df.join(final_cleaned_dfs) # type: ignore
