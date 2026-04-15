@@ -32,8 +32,8 @@ class Blocking(BaseModel):
 
 
 class Bounds(BaseModel):
-    u_bound: float
-    l_bound: float
+    u_bound: float = 90.0
+    l_bound: float = 75.0
 
 
 class ClientConfig(BaseModel):
@@ -43,7 +43,7 @@ class ClientConfig(BaseModel):
     MAIN_MATCH_CRITERIA: str
     MATCH_FIELD: str
     NICKNAME: Optional[str] = None
-    BOUNDS: Optional[Bounds] = None
+    BOUNDS: Bounds
 
     @model_validator(mode="after")
     def validate_main_match_criteria(self) -> ClientConfig:

@@ -5,7 +5,7 @@ from rapidfuzz import process, fuzz
 from typing import Optional
 from itertools import combinations
 from nicknames import NickNamer
-
+import sys
 from dedupe.dsu import DSU
 
 from common.logger import get_logger
@@ -144,7 +144,7 @@ def run_fuzzy_dedupe(
                         matrices[nickname_col][i, j] = 100
                         final_matrix[i, j] += 100 * weight
 
-                    # No nickname matches, Jaro Winkler will be used to fuzzy match
+                    # No nickname matches, WRatio will be used to fuzzy match
                     else:
                         score = fuzz.WRatio(name_a, name_b)
                         matrices[nickname_col][i, j] = score
@@ -169,7 +169,7 @@ def run_fuzzy_dedupe(
 
         # Assign scores to df
         assign_scores(final_matrix, block_df, score_array, dsu, l_bound)
-
+    sys.exit()
     mask = score_array > 0
     main_df.loc[mask, "score"] = score_array[mask]
     label_df(main_df, l_bound=l_bound, u_bound=u_bound)
