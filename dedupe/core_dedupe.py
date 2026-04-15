@@ -1,6 +1,7 @@
 import pandas as pd
 from pandas.core.groupby import DataFrameGroupBy
 import numpy as np
+from numpy.typing import NDArray
 from rapidfuzz import process, fuzz
 from typing import Optional
 from itertools import combinations
@@ -9,41 +10,9 @@ import sys
 from dedupe.dsu import DSU
 
 from common.logger import get_logger
+from common.exceptions import ConfigError
 
 logger = get_logger(__name__)
-
-
-def run_strict_dedupe(df: pd.DataFrame, cols: list[str], dsu: DSU) -> pd.DataFrame:
-    df.loc[:, "dupe"] = pd.NA
-    df.loc[:, "score"] = pd.NA
-
-    # Dedupe on each of the client chosen normalized columns
-    for col in cols:
-
-        # Use DSU to link multiple dupes to one root record
-        for idx_group in df.groupby(col).indices.values():
-            if len(idx_group) > 1:
-                label_indices = df.index[idx_group]
-                for i in range(1, len(label_indices)):
-                    dsu.union(label_indices[0], label_indices[i])
-
-        # Label duplicated records for master df
-        mask = df[col].duplicated(keep=False) & df[col].notna()
-        df.loc[mask, f"{col}_dupe"] = "TRUE"
-        df.loc[~mask, f"{col}_dupe"] = "FALSE"
-
-        df.loc[mask, "count"] = df[mask].groupby(col).cumcount() + 1
-
-    unassigned_mask = df["count"].isna()
-    df.loc[unassigned_mask, "count"] = 1
-
-    dupe_cols = [f"{col}_dupe" for col in cols]
-    mask = (df[dupe_cols] == 'TRUE').sum(axis=1) >=2
-    df.loc[mask,'dupe'] = 'TRUE'
-    df.loc[~mask, 'dupe'] = 'FALSE'
-    
-
-    return df
 
 
 def label_df(main_df: pd.DataFrame, l_bound: float, u_bound: float) -> None:
@@ -59,11 +28,21 @@ def label_df(main_df: pd.DataFrame, l_bound: float, u_bound: float) -> None:
     mask = (main_df["score"] < l_bound) | (main_df["score"].isna())
     main_df.loc[mask, "dupe"] = "FALSE"
 
+def assign_match_id(main_df: pd.DataFrame, dsu: DSU, match_field: str) -> pd.DataFrame:
+    main_df['root'] = main_df.index.map(dsu.find)
+    try:
+        main_df["match_id"] = main_df["root"].map(main_df[match_field])
+    except KeyError:
+        raise ConfigError(
+            f"{match_field} not found in csv file columns. Check MATCH_FIELD assignment in the client yaml."
+        )
+    return main_df
+
 
 def assign_scores(
     final_matrix: np.ndarray,
     block_df: pd.DataFrame,
-    score_array: np.array,
+    score_array: NDArray,
     dsu: DSU,
     l_bound: float,
 ) -> None:
@@ -83,14 +62,42 @@ def assign_scores(
     np.maximum.at(score_array, block_df.index[columns], scores)
 
 
+def run_strict_dedupe(df: pd.DataFrame, cols: list[str], dsu: DSU, main_match: str) -> pd.DataFrame:
+    df.loc[:, "dupe"] = pd.NA
+    df.loc[:, "score"] = pd.NA
+
+    # Dedupe on each of the client chosen normalized columns
+    for col in cols:
+        mask = df[col].duplicated(keep=False) & df[col].notna()
+        df.loc[mask, f"{col}_dupe"] = True
+        df.loc[~mask, f"{col}_dupe"] = False
+    
+    dupe_cols = [f"{col}_dupe" for col in cols]
+    mask = (df[dupe_cols] == True).sum(axis=1) >=2
+    df.loc[mask, 'dupe'] = True
+    df.loc[~mask, 'dupe'] = False
+    df.loc[mask,"combined_cols"] = df.apply(lambda row: "|".join([row[col] for col in cols if row[f"{col}_dupe"] == True]), axis=1)
+    
+    # DSU to link multiple dupes to one root record
+    for idx_group in df.groupby("combined_cols").indices.values():
+            if len(idx_group) > 1:
+                label_indices = df.index[idx_group]
+                for i in range(1, len(label_indices)):
+                    dsu.union(label_indices[0], label_indices[i])
+    
+    df = assign_match_id(main_df=df,dsu=dsu, match_field=main_match)
+    df["count"] = df.groupby("match_id").cumcount() + 1
+    
+    return df
 def run_fuzzy_dedupe(
     main_df: pd.DataFrame,
     cols: dict,
     dsu: DSU,
     blocks: DataFrameGroupBy,
     main_match_criteria: str,
-    u_bound: float = 90.0,
-    l_bound: float = 75.0,
+    match_field: str,
+    u_bound: float,
+    l_bound: float,
     nickname_col: Optional[str] = None,
 ) -> pd.DataFrame:
 
@@ -152,6 +159,7 @@ def run_fuzzy_dedupe(
 
             # Non nickname columns will use the W Ratio for fuzzying
             else:
+
                 scores = process.cdist(records, records, scorer=fuzz.WRatio)
                 final_matrix += scores * weight
 
@@ -169,8 +177,8 @@ def run_fuzzy_dedupe(
 
         # Assign scores to df
         assign_scores(final_matrix, block_df, score_array, dsu, l_bound)
-    sys.exit()
     mask = score_array > 0
     main_df.loc[mask, "score"] = score_array[mask]
+    main_df = assign_match_id(main_df=main_df, dsu=dsu, match_field=match_field)
     label_df(main_df, l_bound=l_bound, u_bound=u_bound)
     return main_df
