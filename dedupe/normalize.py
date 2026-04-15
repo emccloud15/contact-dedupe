@@ -1,6 +1,6 @@
 import pandas as pd
-import sys
 from typing import Callable
+import sys
 
 from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
 
@@ -22,7 +22,10 @@ def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str | None]
 
 def combine_address(addresses: list[pd.Series]) -> pd.Series:
     address_df = pd.concat(addresses, axis=1)
-    return address_df.apply(lambda row: "|".join(v for v in row if pd.notna(v)),axis=1).rename("address")
+    def join_row(row: pd.Series) ->str:
+        vals = [v for v in row if pd.notna(v)]
+        return "|".join(vals) if vals else pd.NA # type: ignore
+    return address_df.apply(join_row, axis=1).rename("address")
 
 # Step 3. Create the normalized columns provided by cleaning them and combining them into one column
 # Only creates rows when there is no null value for one of the fields being combined.
@@ -55,22 +58,25 @@ def normalize_contact_method(
         contact_type_series = [combine_address(contact_type_series)]
     
     for series in contact_type_series:
+        
+
         mask = series.notna()
         parts = [series[mask]]
+       
 
         if contact_type != 'name' and getattr(data, contact_type).include_name:
 
-            parts += [s.loc[mask] for s in name_cache['names']]
+            parts += [s[mask] for s in name_cache['names']]
             joined_name = pd.concat(parts, axis=1).agg("|".join, axis=1)
 
-            col = f'clean_{series.name}:name_{series.name}'
+            col = f'clean_{series.name}:name_{contact_type}'
             
             df[col] = pd.NA
             df.loc[mask, col] = joined_name
-        else:
-            col = f'clean_{series.name}:{series.name}'
-            df[col] = pd.NA
-            df.loc[mask, col] = series
+        
+        col = f'clean_{series.name}:{contact_type}'
+        df[col] = pd.NA
+        df.loc[mask, col] = series
 
     return df[[c for c in df.columns if c.startswith("clean_")]]
 
