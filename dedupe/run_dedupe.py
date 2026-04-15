@@ -14,15 +14,27 @@ from common.logger import get_logger
 from common.models import ClientConfig, Blocking
 
 logger = get_logger(__name__)
+def create_col_list(columns: list[str], contact_type: str, cols: list) -> list[str]:
 
+    name_cols = [col for col in columns if col.endswith(f":name_{contact_type}")]
+    if name_cols:
+        cols += name_cols
+    else:
+        cols += [col for col in columns if col.endswith(f":{contact_type}")]
+
+    return cols
 
 def column_weights(cleaned_cols: list[str], client_cfg: ClientConfig) -> dict:
     # Getting the column weights from the client cfg file, combining them with the dataframe column names that will be used for the fuzzy
     # Separate dictionary unioned in becuase the structure of the name weights in the cfg file is different to allow for weights per name column
-    return {
-        col: getattr(client_cfg.COLUMNS, col.split(":")[1].strip()).weight
-        for col in cleaned_cols
-    } | {name_col: weight for name_col, weight in client_cfg.COLUMNS.name.weight}
+    weights = {}
+    for col in cleaned_cols:
+        weight = getattr(client_cfg.COLUMNS, col.split(":")[1].strip()).weight
+        if type(weight) is list:
+            weights.update({col: w for _,w in weight})
+        else:
+            weights.update({col: weight})
+    return weights
 
 
 # Gives user choice to auto-balance or exit. THIS FUNCTION CAN EXIT THE PROGRAM
@@ -90,13 +102,7 @@ def create_final_file(
     output_path: Path,
     client_name: str,
 ) -> None:
-    df["root"] = df.index.map(dsu.find)
-    try:
-        df["match_id"] = df["root"].map(df[match_field])
-    except KeyError:
-        raise ConfigError(
-            f"{match_field} not found in csv file columns. Check MATCH_FIELD assignment in the client yaml."
-        )
+    
     today = datetime.today().date()
 
     # Master file output
@@ -126,20 +132,15 @@ def run_dedupe(client_cfg: ClientConfig, input_path: Path, output_path: Path) ->
     # Normalize the df
     normalized_df = normalize_df(original_df, client_cfg.COLUMNS)
     dsu = DSU(len(normalized_df))
+   
 
     # Primary columns are normalized columns usually combined with names for strict dedupe
-    primary = [
-        col
-        for col in normalized_df.columns
-        if col.endswith((":name_email", ":name_phone", ":name_address"))
-    ]
-    # Secondary columns are non name combined normalized columns for fuzzy
-    secondary = [
-        col
-        for col in normalized_df.columns
-        if col.endswith((":email", ":phone", ":address"))
-    ]
-    cols = primary if primary else secondary
+    cols = []
+    contact_types = ['address','email','phone','name']
+    for ct in contact_types:
+        cols = create_col_list(columns=normalized_df.columns.to_list(), contact_type=ct, cols=cols)
+            
+            
 
     # Group for client required strict group deduping
     try:
@@ -154,20 +155,23 @@ def run_dedupe(client_cfg: ClientConfig, input_path: Path, output_path: Path) ->
         temp_cols = cols + [f"{col}_dupe" for col in cols] + ["dupe", "score", "count"]
         results = []
         for _, group_df in group:
-            results.append(run_strict_dedupe(group_df, cols, dsu))
+            results.append(run_strict_dedupe(group_df, cols, dsu, client_cfg.MATCH_FIELD))
 
         result_df = pd.concat(results)
         normalized_df.loc[result_df.index, temp_cols] = result_df[temp_cols]
         main_df = normalized_df
     else:
-        main_df = run_strict_dedupe(normalized_df, cols, dsu)
+        main_df = run_strict_dedupe(normalized_df, cols, dsu, client_cfg.MATCH_FIELD)
 
     # Handle column set up for fuzzy
-    cols = secondary
+    cols = [col for col in normalized_df.columns if col.endswith((':address',':email',':phone',':name'))]
+
     # Create dictionary for column weights. Specified in client config
     weighted_cols = column_weights(cols, client_cfg)
+    
     # Ensure given weights add to 1.0
     weighted_cols = test_weights(weighted_cols)
+  
 
     # Run fuzzy dedupe
     blocks = create_block(main_df, client_cfg.BLOCKING, True)
