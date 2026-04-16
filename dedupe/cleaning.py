@@ -9,15 +9,15 @@ def clean_name(n: str) -> str:
 
 
 def clean_email(e: str) -> Optional[str]:
-    if pd.isna(e):
+    if pd.isna(e) or isinstance(e, str) and not e.strip():
         return None
-    e = str(e)
     return e.strip().lower().replace(" ", "")
 
 
 def clean_phone(p: str | int | float) -> Optional[str]:
-    if pd.isna(p):
+    if pd.isna(p) or isinstance(p, str) and not p.strip():
         return None
+
     cleaned = re.sub(r"\D", "", str(p))
     if len(cleaned) == 11 and cleaned.startswith("1"):
         cleaned = str(cleaned[1:])
@@ -25,7 +25,7 @@ def clean_phone(p: str | int | float) -> Optional[str]:
 
 
 def clean_address(a: str) -> Optional[str]:
-    if pd.isna(a):
+    if pd.isna(a) or isinstance(a, str) and not a.strip():
         return None
     a = str(a)
     return re.sub(r"[\s\"\'\-,]", "", str(a)).lower()
