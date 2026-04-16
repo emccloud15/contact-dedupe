@@ -29,11 +29,11 @@ def column_weights(cleaned_cols: list[str], client_cfg: ClientConfig) -> dict:
     # Separate dictionary unioned in becuase the structure of the name weights in the cfg file is different to allow for weights per name column
     weights = {}
     for col in cleaned_cols:
-        weight = getattr(client_cfg.COLUMNS, col.split(":")[1].strip()).weight
-        if type(weight) is list:
-            weights.update({col: w for _,w in weight})
-        else:
-            weights.update({col: weight})
+        
+        for attr,field in getattr(client_cfg.COLUMNS, col.split(":")[1].strip()):
+            if attr == 'weight':
+                weights.update({col: field} if isinstance(field, float) else {col:item[1] for item in field if item[0] in col})
+             
     return weights
 
 
@@ -111,7 +111,7 @@ def create_final_file(
     )
 
     # Check file output
-    check_ids = df[df["dupe"] == "CHECK"]["root"].to_list()
+    check_ids = df[df["dupe"].isna()]["root"].to_list()
     df[df["root"].isin(check_ids)].sort_values("match_id").to_csv(
         f"{output_path}/{client_name}_check_{today}.csv", index=False
     )
@@ -183,6 +183,7 @@ def run_dedupe(client_cfg: ClientConfig, input_path: Path, output_path: Path) ->
         u_bound=client_cfg.BOUNDS.u_bound,
         l_bound=client_cfg.BOUNDS.l_bound,
         main_match_criteria=client_cfg.MAIN_MATCH_CRITERIA,
+        match_field=client_cfg.MATCH_FIELD,
         nickname_col=client_cfg.NICKNAME,
     )
 
