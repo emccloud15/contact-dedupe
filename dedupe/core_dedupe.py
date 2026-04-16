@@ -13,8 +13,7 @@ from common.logger import get_logger
 from common.exceptions import ConfigError
 
 logger = get_logger(__name__)
-
-    
+  
 def label_df(main_df: pd.DataFrame, score_array: NDArray) -> None:
     conditions =[
         main_df['dupe'] == True,
@@ -26,13 +25,6 @@ def label_df(main_df: pd.DataFrame, score_array: NDArray) -> None:
     ]
     main_df['score'] = np.select(condlist=conditions, choicelist=choices, default=0)
     main_df.loc[main_df['score']==0, 'dupe'] = False
-
-    mask = score_array > 0
-    main_df.loc[mask, "score"] = score_array[mask]
-    mask = main_df['dupe'] == True
-    main_df.loc[mask,'score'] = 100
-    mask = main_df['score'].isna()
-    main_df.loc[mask,'dupe'] = False
 
 def assign_match_id(main_df: pd.DataFrame, dsu: DSU, match_field: str) -> pd.DataFrame:
     main_df['root'] = main_df.index.map(dsu.find)
@@ -66,7 +58,6 @@ def assign_scores(
     np.maximum.at(score_array, block_df.index[rows], scores)
     np.maximum.at(score_array, block_df.index[columns], scores)
 
-
 def run_strict_dedupe(df: pd.DataFrame, cols: list[str], dsu: DSU, main_match: str) -> pd.DataFrame:
     df.loc[:, "dupe"] = pd.NA
     df.loc[:, "score"] = pd.NA
@@ -91,8 +82,8 @@ def run_strict_dedupe(df: pd.DataFrame, cols: list[str], dsu: DSU, main_match: s
     
     df = assign_match_id(main_df=df,dsu=dsu, match_field=main_match)
     df["count"] = df.groupby("match_id").cumcount() + 1
-    
     return df
+
 def run_fuzzy_dedupe(
     main_df: pd.DataFrame,
     cols: dict,
@@ -108,10 +99,10 @@ def run_fuzzy_dedupe(
     score_array = np.zeros(len(main_df))
 
     nn = NickNamer()
-
-    
-    matrix_names = [f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col for col in cols.keys()]
     nicknames = {}
+
+    matrix_names = [f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col for col in cols.keys()]
+    
 
     # Looping through blocks to fuzzy on. Blocking can be changed in client yaml
     for _, block_df in blocks:
@@ -137,6 +128,7 @@ def run_fuzzy_dedupe(
         for col, weight in cols.items():
 
             records = block_df[col].to_list()
+            # Creating a boolean NxN matrix for whether or not a record for the current column is nan
             has_value = np.array([pd.notna(v) for v in records])
             both_have_value = has_value[:,None] & has_value[None, :]
 
@@ -149,29 +141,29 @@ def run_fuzzy_dedupe(
                         nicknames.get(name_a, set()) & nicknames.get(name_b, set())
                     )
 
-                    # Giving a score of 100 for names that are eachothers nicknames
+                    # Names with an intesecting set of nicknames > 0 are given a score of 100
                     # The main match criteria used later on will mitigate false positives
                     if match:
                         matrices[nickname_col][i, j] = 100
-                        #final_matrix[i, j] += 100 * weight
+                        
 
                     # No nickname matches, WRatio will be used to fuzzy match
                     else:
                         score = fuzz.WRatio(name_a, name_b)
                         matrices[nickname_col][i, j] = score
-                        #final_matrix[i, j] += score * weight
                 matrices[nickname_col] = np.where(both_have_value,matrices[nickname_col], np.nan)
-            # Non nickname columns will use the W Ratio for fuzzying
+            
+            
             else:
 
                 scores = process.cdist(records, records, scorer=fuzz.WRatio)
-                #final_matrix += scores * weight
                 name = f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col
                 matrices[name] += scores
                 matrices[name] = np.where(both_have_value, matrices[name], np.nan)
        
         
-            
+        # For every specific column score matrix in matrices if both columns were present to be fuzzy matched will receive a value of 1
+        # Each matrix will be added together to determine how many fields were not nan values. This is then used to redistribute the weights.    
         mask = np.array([pd.notna(v) for v in matrices.values()])
         total_filled = np.zeros((n,n))
         for m in mask:
@@ -184,6 +176,7 @@ def run_fuzzy_dedupe(
         hit_count = sum(v.astype(int) for v in hits.values())
         gate_mask = (matrices[main_match_criteria] >= u_bound) & (hit_count >= 1)
         final_matrix_mask = np.where(gate_mask,True,False)
+        
         for col,weight in cols.items():
             
             res = np.reciprocal(total_filled)
@@ -191,13 +184,8 @@ def run_fuzzy_dedupe(
                
             matrices[f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col] *= weight 
         final_matrix = np.where(final_matrix_mask,np.nansum(list(matrices.values()),axis=0),0)  
+    
         
-
-
-  
-
-        
-
         # Assign scores to df
         assign_scores(final_matrix, block_df, score_array, dsu, l_bound)
 
