@@ -14,19 +14,25 @@ from common.exceptions import ConfigError
 
 logger = get_logger(__name__)
 
+    
+def label_df(main_df: pd.DataFrame, score_array: NDArray) -> None:
+    conditions =[
+        main_df['dupe'] == True,
+        score_array > 0
+    ]
+    choices = [
+        100,
+        score_array
+    ]
+    main_df['score'] = np.select(condlist=conditions, choicelist=choices, default=0)
+    main_df.loc[main_df['score']==0, 'dupe'] = False
 
-def label_df(main_df: pd.DataFrame, l_bound: float, u_bound: float) -> None:
-    mask = main_df["dupe"] == "TRUE"
-    main_df.loc[mask, "score"] = 100
-
-    mask = main_df["score"] > u_bound
-    main_df.loc[mask, "dupe"] = "TRUE"
-
-    mask = (main_df["score"] >= l_bound) & (main_df["score"] <= u_bound)
-    main_df.loc[mask, "dupe"] = "CHECK"
-
-    mask = (main_df["score"] < l_bound) | (main_df["score"].isna())
-    main_df.loc[mask, "dupe"] = "FALSE"
+    mask = score_array > 0
+    main_df.loc[mask, "score"] = score_array[mask]
+    mask = main_df['dupe'] == True
+    main_df.loc[mask,'score'] = 100
+    mask = main_df['score'].isna()
+    main_df.loc[mask,'dupe'] = False
 
 def assign_match_id(main_df: pd.DataFrame, dsu: DSU, match_field: str) -> pd.DataFrame:
     main_df['root'] = main_df.index.map(dsu.find)
@@ -37,7 +43,6 @@ def assign_match_id(main_df: pd.DataFrame, dsu: DSU, match_field: str) -> pd.Dat
             f"{match_field} not found in csv file columns. Check MATCH_FIELD assignment in the client yaml."
         )
     return main_df
-
 
 def assign_scores(
     final_matrix: np.ndarray,
@@ -73,9 +78,8 @@ def run_strict_dedupe(df: pd.DataFrame, cols: list[str], dsu: DSU, main_match: s
         df.loc[~mask, f"{col}_dupe"] = False
     
     dupe_cols = [f"{col}_dupe" for col in cols]
-    mask = (df[dupe_cols] == True).sum(axis=1) >=2
+    mask = (df[dupe_cols] == True).sum(axis=1) >=3
     df.loc[mask, 'dupe'] = True
-    df.loc[~mask, 'dupe'] = False
     df.loc[mask,"combined_cols"] = df.apply(lambda row: "|".join([row[col] for col in cols if row[f"{col}_dupe"] == True]), axis=1)
     
     # DSU to link multiple dupes to one root record
@@ -103,8 +107,11 @@ def run_fuzzy_dedupe(
 
     score_array = np.zeros(len(main_df))
 
-    if nickname_col:
-        nn = NickNamer()
+    nn = NickNamer()
+
+    
+    matrix_names = [f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col for col in cols.keys()]
+    nicknames = {}
 
     # Looping through blocks to fuzzy on. Blocking can be changed in client yaml
     for _, block_df in blocks:
@@ -116,25 +123,22 @@ def run_fuzzy_dedupe(
 
         # Nickname set for finding name matches between records like "Christina" and "Tina"
         if nickname_col:
-            nicknames = {
-                name: set(nn.nicknames_of(name)) | {name.lower()}
-                for name in str(block_df[nickname_col].unique())
-            }
+            nicknames.update({
+                    name: set(nn.nicknames_of(name)) | {name.lower()}
+                    for name in str(block_df[nickname_col].unique())
+                })
 
         # Creating a dictionary of matrices. One for each column being fuzzied on. The columns being fuzzied on are normalized columns from the normalize function
         # They are all in the form "clean_originalcolname:contacttype" i.e clean_homephone:phone, except for address which is just clean_address:address,
         # And name columns which are their original column name
-        matrices = {
-            (
-                f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col
-            ): np.zeros((n, n))
-            for col in cols.keys()
-        }
+        matrices = {name: np.zeros((n, n)) for name in matrix_names}
 
         # Normalized columns to fuzzy on
         for col, weight in cols.items():
 
             records = block_df[col].to_list()
+            has_value = np.array([pd.notna(v) for v in records])
+            both_have_value = has_value[:,None] & has_value[None, :]
 
             # If nickname column has been passed, seperate fuzzying will be performed on this column
             if col == nickname_col:
@@ -149,36 +153,55 @@ def run_fuzzy_dedupe(
                     # The main match criteria used later on will mitigate false positives
                     if match:
                         matrices[nickname_col][i, j] = 100
-                        final_matrix[i, j] += 100 * weight
+                        #final_matrix[i, j] += 100 * weight
 
                     # No nickname matches, WRatio will be used to fuzzy match
                     else:
                         score = fuzz.WRatio(name_a, name_b)
                         matrices[nickname_col][i, j] = score
-                        final_matrix[i, j] += score * weight
-
+                        #final_matrix[i, j] += score * weight
+                matrices[nickname_col] = np.where(both_have_value,matrices[nickname_col], np.nan)
             # Non nickname columns will use the W Ratio for fuzzying
             else:
 
                 scores = process.cdist(records, records, scorer=fuzz.WRatio)
-                final_matrix += scores * weight
-
-                matrices[
-                    f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col
-                ] += scores
-
+                #final_matrix += scores * weight
+                name = f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col
+                matrices[name] += scores
+                matrices[name] = np.where(both_have_value, matrices[name], np.nan)
+       
+        
+            
+        mask = np.array([pd.notna(v) for v in matrices.values()])
+        total_filled = np.zeros((n,n))
+        for m in mask:
+            total_filled += np.where(m, 1,0)
+    
+       
         # Creates a matrix with how many fields return a matching score of over 95.
         # Creating a count for how many fields the two comparing records have in common
         hits = {k: v >= u_bound for k, v in matrices.items()}
         hit_count = sum(v.astype(int) for v in hits.values())
+        gate_mask = (matrices[main_match_criteria] >= u_bound) & (hit_count >= 1)
+        final_matrix_mask = np.where(gate_mask,True,False)
+        for col,weight in cols.items():
+            
+            res = np.reciprocal(total_filled)
+            res +=weight
+               
+            matrices[f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col] *= weight 
+        final_matrix = np.where(final_matrix_mask,np.nansum(list(matrices.values()),axis=0),0)  
+        
 
-        gate_mask = (matrices[main_match_criteria] >= u_bound) & (hit_count >= 2)
-        final_matrix = np.where(gate_mask, final_matrix, 0)
+
+  
+
+        
 
         # Assign scores to df
         assign_scores(final_matrix, block_df, score_array, dsu, l_bound)
-    mask = score_array > 0
-    main_df.loc[mask, "score"] = score_array[mask]
+
     main_df = assign_match_id(main_df=main_df, dsu=dsu, match_field=match_field)
-    label_df(main_df, l_bound=l_bound, u_bound=u_bound)
+    label_df(main_df=main_df, score_array=score_array)
+    
     return main_df
