@@ -14,7 +14,7 @@ from common.exceptions import ConfigError
 
 logger = get_logger(__name__)
   
-def label_df(main_df: pd.DataFrame, score_array: NDArray) -> None:
+def label_df(main_df: pd.DataFrame, score_array: NDArray, u_bound: float) -> None:
     conditions =[
         main_df['dupe'] == True,
         score_array > 0
@@ -25,6 +25,8 @@ def label_df(main_df: pd.DataFrame, score_array: NDArray) -> None:
     ]
     main_df['score'] = np.select(condlist=conditions, choicelist=choices, default=0)
     main_df.loc[main_df['score']==0, 'dupe'] = False
+    mask = main_df['score'] > u_bound
+    main_df.loc[mask,'dupe'] = True
 
 def assign_match_id(main_df: pd.DataFrame, dsu: DSU, match_field: str) -> pd.DataFrame:
     main_df['root'] = main_df.index.map(dsu.find)
@@ -190,6 +192,6 @@ def run_fuzzy_dedupe(
         assign_scores(final_matrix, block_df, score_array, dsu, l_bound)
 
     main_df = assign_match_id(main_df=main_df, dsu=dsu, match_field=match_field)
-    label_df(main_df=main_df, score_array=score_array)
+    label_df(main_df=main_df, score_array=score_array, u_bound=u_bound)
     
     return main_df
