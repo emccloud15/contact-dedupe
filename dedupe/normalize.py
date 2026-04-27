@@ -24,7 +24,7 @@ def combine_address(addresses: list[pd.Series]) -> pd.Series:
     address_df = pd.concat(addresses, axis=1)
     def join_row(row: pd.Series) ->str:
         vals = [v for v in row if pd.notna(v)]
-        return "|".join(vals) if vals else pd.NA # type: ignore
+        return ''.join(vals) if vals else pd.NA # type: ignore
     return address_df.apply(join_row, axis=1).rename("address")
 
 # Step 3. Create the normalized columns provided by cleaning them and combining them into one column
