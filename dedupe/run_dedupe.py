@@ -14,6 +14,51 @@ from common.logger import get_logger
 from common.models import ClientConfig, Blocking
 
 logger = get_logger(__name__)
+def create_check_cols(orig_cols: list[str]) -> list:
+    return [col for col in orig_cols if not 
+            ((col.startswith('clean') or col.startswith('score') or col.startswith('main')) & col.endswith('_main')) |
+            (col.startswith('clean') & ('dupe' not in col) ) | 
+            (col.startswith('dupe')) | 
+            ('combined' in col) |
+            ('root' in col) |
+            ('count' in col) |
+            ('match_id_duplicate' in col) |
+            ('match_id_main' in col)]
+    
+
+def create_check_file(df: pd.DataFrame, output_path: str, u_bound: float) -> None:
+
+    check_file = df.merge(df, how='inner', left_on='Id', right_on='match_id', suffixes=('_main', '_duplicate'))
+    check_file = check_file[check_file['Id_main'] != check_file['Id_duplicate']]
+    
+    cols = create_check_cols(list(check_file.columns))
+    check_file = check_file[cols]
+    check_file.insert(0,'Merge','MERGE', allow_duplicates=True)
+    mask = check_file['score_duplicate'] < u_bound
+    check_file.loc[mask, 'Merge'] = 'CHECK'
+    
+
+    check_file.to_csv(output_path, index=False)
+
+def create_check_name_matches_file(df: pd.DataFrame, output_path: str) -> None:
+    name_cols = [col for col in df.columns if (col.startswith('clean_')) & ('Name' in col)]
+    if name_cols:
+        mask = (df[name_cols].all(axis=1)) & (df['score'] == 0)
+        df = df.loc[mask]
+        cols = create_check_cols(list(df.columns))
+        cols = [col for col in cols if not col.startswith('clean') | ('score' in col) | ('match_id' in col)]
+        df = df[cols]
+        mask = df['Name'] != 'Friends of GCM'
+        df = df.loc[mask]
+
+        df = df.merge(df, how='inner', left_on='Name', right_on='Name', suffixes=('_main','_duplicate'))
+        df = df[df['Id_main'] != df['Id_duplicate']]
+        df = df[~df.apply(lambda x: frozenset([x['Id_main'], x['Id_duplicate']]), axis=1).duplicated()] #type: ignore
+
+        df.insert(0, 'Merge', 'CHECK', allow_duplicates=True)
+        df.sort_values('Name').to_csv(output_path, index=False)
+    
+
 def create_col_list(columns: list[str], contact_type: str, cols: list) -> list[str]:
 
     name_cols = [col for col in columns if col.endswith(f":name_{contact_type}")]
@@ -97,10 +142,9 @@ def create_block(
 def create_final_file(
     df: pd.DataFrame,
     original_cols: list[str],
-    dsu: DSU,
-    match_field: str,
     output_path: Path,
     client_name: str,
+    u_bound: float
 ) -> None:
     
     today = datetime.today().date()
@@ -111,10 +155,10 @@ def create_final_file(
     )
 
     # Check file output
-    check_ids = df[df["dupe"].isna()]["root"].to_list()
-    df[df["root"].isin(check_ids)].sort_values("match_id").to_csv(
-        f"{output_path}/{client_name}_check_{today}.csv", index=False
-    )
+    check_output_path = f"{output_path}/{client_name}_check_{today}.csv"
+    name_check_output_path = f"{output_path}/{client_name}_name_check_{today}.csv"
+    create_check_file(df, check_output_path, u_bound)
+    create_check_name_matches_file(df, name_check_output_path)
 
     # Cleaned output
     original_cols.append("match_id")
@@ -190,10 +234,9 @@ def run_dedupe(client_cfg: ClientConfig, input_path: Path, output_path: Path) ->
     create_final_file(
         df=main_df,
         original_cols=original_cols,
-        dsu=dsu,
-        match_field=client_cfg.MATCH_FIELD,
         output_path=output_path,
         client_name=client_cfg.CLIENT_NAME,
+        u_bound=client_cfg.BOUNDS.u_bound
     )
 
     logger.info("Dedupe complete")
