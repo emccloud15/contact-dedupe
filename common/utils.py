@@ -10,10 +10,21 @@ from common.models import ClientConfig
 
 logger = get_logger(__name__)
 
+def load_data_from_dir(input_dir: Path) -> tuple:
+    files = [f for f in input_dir.iterdir() if f.name != '.DS_Store']
+    print(files)
+    if len(files) != 2:
+        raise DataLoadError('There must be only two files in the provided directory. The yaml settings file, and the file to be deduplicated.')
+    yaml_file = next((f for f in files if f.suffix == ('.yaml')), None)
+    dupe_file = next((f for f in files if f.suffix == ('.csv')), None)
+
+    if not yaml_file or not dupe_file:
+        raise DataLoadError("There must be a .yaml file and a .csv file in the input directory")
+    return yaml_file, dupe_file
 
 # Transform client YAML to Pydantic model Settings
-def load_client_config(file_path: str) -> ClientConfig:
-    if not file_path.endswith((".yaml", ".yml")):
+def load_client_config(file_path: Path) -> ClientConfig:
+    if file_path.suffix != ".yaml":
         raise DataLoadError(f"File path is not a yaml file. Please try again")
     try:
         with open(file_path, "r") as f:
