@@ -138,16 +138,33 @@ def create_block(
         else:
             return dupe_df.groupby(dupe_df[blocking_rules.column].str[-3:])
 
+def virtuous_table_setup(df: pd.DataFrame) -> pd.DataFrame:
+    df.loc[:,'idx'] = df.index
+    df.loc[:,'Duplicate idx'] = df.index
+    df.loc[:,'order'] = 1
+    df.loc[:,'Duplicate order'] = 2
+    primary_cols = [col for col in df.columns if 'Duplicate' not in col]
+    duplicate_cols = ['Duplicate ' + col for col in primary_cols]
+
+
+    primary_df = df[primary_cols]
+    duplicate_df = df[duplicate_cols]
+
+    duplicate_df.columns = primary_df.columns
+    return pd.concat([primary_df, duplicate_df], ignore_index=True)
+    
 
 def create_final_file(
     df: pd.DataFrame,
-    original_cols: list[str],
     output_path: Path,
     client_name: str,
-    u_bound: float
+    u_bound: float,
+    l_bound: float,
+    virtuous: bool
 ) -> None:
     
     today = datetime.today().date()
+    df['score'] = df['score'].round(2)
 
     # Master file output
     df.sort_values("match_id").to_csv(
@@ -160,18 +177,62 @@ def create_final_file(
     create_check_file(df, check_output_path, u_bound)
     create_check_name_matches_file(df, name_check_output_path)
 
-    # Cleaned output
-    original_cols.append("match_id")
-    df[df["count"] == 1][original_cols].sort_values("match_id").to_csv(
-        f"{output_path}/{client_name}_cleaned_{today}.csv", index=False
-    )
+    # Virtuous file output
+    if virtuous:
+        
+        primary_df = df[df['order'] == 1]
+        comparative_df = df[df['order'] == 2]
+        
+    
+        compared_record_cols = [f"Duplicate {col}" for col in df.columns]
+        comparative_df.columns = compared_record_cols
+
+        primary_df = primary_df.set_index('idx')
+        comparative_df = comparative_df.set_index('Duplicate idx')
+        
+
+        final_df = pd.concat([primary_df,comparative_df], axis=1)
+
+        # This labels rows where 1 and only one value matched. If a record only matched on email they should be given a look
+        duplicate_cols = [col for col in compared_record_cols if col.endswith('_dupe')]
+        mask = (final_df['Duplicate score'] == 0) & (final_df[duplicate_cols].sum(axis=1) == 1)
+        final_df.loc[mask, 'Duplicate score'] = 45
+
+        # Same as previous but at least 2 matched
+        mask = (final_df['Duplicate score'] == 0) & (final_df[duplicate_cols].sum(axis=1) > 1)
+        final_df.loc[mask, 'Duplicate score'] = 55
+
+        mask = (final_df['Duplicate score'] <= u_bound) & (final_df['Duplicate score'] >= l_bound)
+        final_df.loc[mask,'Duplicate dupe'] = 'CHECK'
+        mask = (final_df['Duplicate score'] < l_bound)
+        final_df.loc[mask,'Duplicate dupe'] = 'IGNORE'
+        mask = (final_df['Duplicate score'] > u_bound)
+        final_df.loc[mask, 'Duplicate dupe'] = 'MERGE'
+
+        
+        cols_to_drop = [col for col in final_df.columns if (col.startswith('clean_')) | 
+                        (col in ['dupe', 'score', 'match_id']) |
+                         ('root' in col) |
+                         ('count' in col) |
+                         ('order' in col) |
+                         ((col.startswith('Duplicate clean_')) & (not col.endswith('dupe')))
+                           ] 
+        final_df = final_df.rename(columns={'Duplicate dupe':'Merge'}).drop(columns=cols_to_drop)
+        final_df.to_csv(f"{output_path}/{client_name}_virtuous_{today}.csv", index=False)
+
+
+
+
 
 
 def run_dedupe(client_cfg: ClientConfig, input_path: Path, output_path: Path) -> None:
 
     # Load file into df
     original_df = load_data_df(input_path)
-    original_cols = original_df.columns.to_list()
+
+
+    if client_cfg.VIRTUOUS:
+        original_df = virtuous_table_setup(original_df)
 
     # Normalize the df
     normalized_df = normalize_df(original_df, client_cfg.COLUMNS)
@@ -233,10 +294,11 @@ def run_dedupe(client_cfg: ClientConfig, input_path: Path, output_path: Path) ->
 
     create_final_file(
         df=main_df,
-        original_cols=original_cols,
         output_path=output_path,
         client_name=client_cfg.CLIENT_NAME,
-        u_bound=client_cfg.BOUNDS.u_bound
+        u_bound=client_cfg.BOUNDS.u_bound,
+        l_bound=client_cfg.BOUNDS.l_bound,
+        virtuous=client_cfg.VIRTUOUS
     )
 
     logger.info("Dedupe complete")
