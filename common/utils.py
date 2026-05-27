@@ -11,8 +11,7 @@ from common.models import ClientConfig
 logger = get_logger(__name__)
 
 def load_data_from_dir(input_dir: Path) -> tuple:
-    files = [f for f in input_dir.iterdir() if f.name.startswith('.')]
-    print(files)
+    files = [f for f in input_dir.iterdir() if not f.name.startswith('.')]
     if len(files) != 2:
         raise DataLoadError('There must be only two files in the provided directory. The yaml settings file, and the file to be deduplicated.')
     yaml_file = next((f for f in files if f.suffix == ('.yaml')), None)
