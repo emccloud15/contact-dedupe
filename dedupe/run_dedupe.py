@@ -164,7 +164,7 @@ def create_final_file(
 ) -> None:
     
     today = datetime.today().date()
-    df['score'] = df['score'].round(2)
+    df['score'] = df['score'].round(0)
 
     # Master file output
     df.sort_values("match_id").to_csv(
