@@ -6,7 +6,6 @@ from rapidfuzz import process, fuzz
 from typing import Optional
 from itertools import combinations
 from nicknames import NickNamer
-import sys
 from dedupe.dsu import DSU
 
 from common.logger import get_logger

@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import Callable
-import sys
+
 
 from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
 
