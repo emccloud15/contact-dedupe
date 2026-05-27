@@ -1,15 +1,14 @@
 [build-system]
 requires = ["setuptools>=61.0"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "contact-dedupe"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
-    "logging>=0.4.9.6",
     "nicknames>=1.0.1",
     "numpy>=2.4.6",
     "openpyxl>=3.1.5",
@@ -19,5 +18,9 @@ dependencies = [
     "rapidfuzz>=3.14.5",
 ]
 
-[projects.scripts]
-dedupe = "contact-dedupe.run:main"
+[tool.setuptools]
+py-modules = ["run"]
+packages = ["common", "dedupe"]
+
+[project.scripts]
+dedupe = "run:main"
