@@ -33,7 +33,7 @@ class Bounds(BaseModel):
 class ClientConfig(BaseModel):
     CLIENT_NAME: str
     COLUMNS: Columns
-    VIRTUOUS: bool
+    VIRTUOUS: Optional[bool] = None
     BLOCKING: Blocking
     MAIN_MATCH_CRITERIA: str
     MATCH_FIELD: str
