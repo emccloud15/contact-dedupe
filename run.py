@@ -5,7 +5,7 @@ from pathlib import Path
 
 from common.utils import load_client_config, load_data_from_dir, load_data_df
 from common.logger import get_logger
-from dedupe.run_dedupe import run_dedupe
+from dedupe.run_dedupe import run_dedupe, create_final_file
 from common.exceptions import DataLoadError, ConfigError
 
 logger = get_logger(__name__)
@@ -44,8 +44,21 @@ def main():
             output_path = Path(args.output)
             output_path.mkdir(parents=True, exist_ok=True)
         client_config = load_client_config(yaml_file)
+        
         dupe_df = load_data_df(dupe_file)
-        run_dedupe(client_config, dupe_df, output_path)
+        
+        main_df = run_dedupe(client_config, dupe_df)
+        create_final_file(
+            df=main_df,
+            output_path=output_path,
+            client_name=client_config.CLIENT_NAME,
+            u_bound=client_config.BOUNDS.u_bound,
+            l_bound=client_config.BOUNDS.l_bound,
+            virtuous=client_config.VIRTUOUS
+        )
+
+        logger.info("Dedupe complete")
+
     except DataLoadError as e:
         logger.exception(f"Dedupe failed during loading data: {e}")
         sys.exit(1)

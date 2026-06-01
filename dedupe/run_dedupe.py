@@ -244,7 +244,7 @@ def create_final_file(
         create_virtuous_file(df=df, output_path=virtuous_output_path, u_bound=u_bound, l_bound=l_bound)
         
        
-def run_dedupe(client_cfg: ClientConfig, original_df: pd.DataFrame, output_path: Path) -> None:
+def run_dedupe(client_cfg: ClientConfig, original_df: pd.DataFrame) -> pd.DataFrame:
 
 
     # Takes the virtuous health tool download
@@ -308,14 +308,5 @@ def run_dedupe(client_cfg: ClientConfig, original_df: pd.DataFrame, output_path:
         match_field=client_cfg.MATCH_FIELD,
         nickname_col=client_cfg.NICKNAME,
     )
-
-    create_final_file(
-        df=main_df,
-        output_path=output_path,
-        client_name=client_cfg.CLIENT_NAME,
-        u_bound=client_cfg.BOUNDS.u_bound,
-        l_bound=client_cfg.BOUNDS.l_bound,
-        virtuous=client_cfg.VIRTUOUS
-    )
-
-    logger.info("Dedupe complete")
+    return main_df
+    
