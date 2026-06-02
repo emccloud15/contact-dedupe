@@ -3,6 +3,7 @@ import numpy as np
 from pandas.core.groupby import DataFrameGroupBy
 import sys
 import re
+import click
 from pathlib import Path
 from datetime import datetime
 
@@ -212,9 +213,6 @@ def create_virtuous_file(df: pd.DataFrame, output_path: str, u_bound: float, l_b
     final_df.to_csv(output_path, index=False)
 
 
-
-    
-
 def create_final_file(
     df: pd.DataFrame,
     output_path: Path,
@@ -259,8 +257,9 @@ def run_dedupe(client_cfg: ClientConfig, original_df: pd.DataFrame) -> pd.DataFr
     # Primary columns are normalized columns usually combined with names for strict dedupe
     cols = []
     contact_types = ['address','email','phone','name']
-    for ct in contact_types:
-        cols = create_col_list(columns=normalized_df.columns.to_list(), contact_type=ct, cols=cols)
+    with click.progressbar(contact_types, label="creating combined columns") as bar:
+        for ct in bar:
+            cols = create_col_list(columns=normalized_df.columns.to_list(), contact_type=ct, cols=cols)
             
             
 
@@ -276,14 +275,16 @@ def run_dedupe(client_cfg: ClientConfig, original_df: pd.DataFrame) -> pd.DataFr
     if client_cfg.BLOCKING.strict:
         temp_cols = cols + [f"{col}_dupe" for col in cols] + ["dupe", "score", "count"]
         results = []
-        for _, group_df in group:
-            results.append(run_strict_dedupe(group_df, cols, dsu, client_cfg.MATCH_FIELD))
+        with click.progressbar(group, label="strict deduping") as bar:
+            for _, group_df in bar:
+                results.append(run_strict_dedupe(group_df, cols, dsu, client_cfg.MATCH_FIELD))
 
         result_df = pd.concat(results)
         normalized_df.loc[result_df.index, temp_cols] = result_df[temp_cols]
         main_df = normalized_df
     else:
-        main_df = run_strict_dedupe(normalized_df, cols, dsu, client_cfg.MATCH_FIELD)
+        with click.progressbar(length=len(normalized_df), label="strict deduping") as bar:
+            main_df = run_strict_dedupe(normalized_df, cols, dsu, client_cfg.MATCH_FIELD)
 
     # Handle column set up for fuzzy
     cols = [col for col in normalized_df.columns if col.endswith((':address',':email',':phone',':name'))]

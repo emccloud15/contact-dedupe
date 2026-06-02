@@ -1,6 +1,6 @@
 import pandas as pd
 from typing import Callable
-
+import click
 
 from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
 
@@ -93,8 +93,9 @@ def normalize_df(df: pd.DataFrame, data: Columns) -> pd.DataFrame:
     contact_types.sort(key=lambda x: contact_type_order.index(x))
 
     name_cache ={}
-    final_cleaned_dfs = [
-        normalize_contact_method(df=df, data=data, contact_type=contact_type, name_cache=name_cache)
-        for contact_type in contact_types]
+    with click.progressbar(contact_types, label='cleaning data') as bar:
+        final_cleaned_dfs = [
+            normalize_contact_method(df=df, data=data, contact_type=contact_type, name_cache=name_cache)
+            for contact_type in bar]
     
     return df.join(final_cleaned_dfs) # type: ignore

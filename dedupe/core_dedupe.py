@@ -1,3 +1,4 @@
+import click
 import pandas as pd
 from pandas.core.groupby import DataFrameGroupBy
 import numpy as np
@@ -106,89 +107,90 @@ def run_fuzzy_dedupe(
     
 
     # Looping through blocks to fuzzy on. Blocking can be changed in client yaml
-    for _, block_df in blocks:
-        n = len(block_df)
-        if n < 2:
-            continue
+    with click.progressbar(blocks, label="fuzzy matching") as bar:
+        for _, block_df in bar:
+            n = len(block_df)
+            if n < 2:
+                continue
 
-        final_matrix = np.zeros((n, n))
+            final_matrix = np.zeros((n, n))
 
-        # Nickname set for finding name matches between records like "Christina" and "Tina"
-        if nickname_col:
-            nicknames.update({
-                    name: set(nn.nicknames_of(name)) | {name.lower()}
-                    for name in str(block_df[nickname_col].unique())
-                })
+            # Nickname set for finding name matches between records like "Christina" and "Tina"
+            if nickname_col:
+                nicknames.update({
+                        name: set(nn.nicknames_of(name)) | {name.lower()}
+                        for name in str(block_df[nickname_col].unique())
+                    })
 
-        # Creating a dictionary of matrices. One for each column being fuzzied on. The columns being fuzzied on are normalized columns from the normalize function
-        # They are all in the form "clean_originalcolname:contacttype" i.e clean_homephone:phone, except for address which is just clean_address:address,
-        # And name columns which are their original column name
-        matrices = {name: np.zeros((n, n)) for name in matrix_names}
+            # Creating a dictionary of matrices. One for each column being fuzzied on. The columns being fuzzied on are normalized columns from the normalize function
+            # They are all in the form "clean_originalcolname:contacttype" i.e clean_homephone:phone, except for address which is just clean_address:address,
+            # And name columns which are their original column name
+            matrices = {name: np.zeros((n, n)) for name in matrix_names}
 
-        # Normalized columns to fuzzy on
-        for col, weight in cols.items():
+            # Normalized columns to fuzzy on
+            for col, weight in cols.items():
 
-            records = block_df[col].to_list()
-            # Creating a boolean NxN matrix for whether or not a record for the current column is nan
-            has_value = np.array([pd.notna(v) for v in records])
-            both_have_value = has_value[:,None] & has_value[None, :]
+                records = block_df[col].to_list()
+                # Creating a boolean NxN matrix for whether or not a record for the current column is nan
+                has_value = np.array([pd.notna(v) for v in records])
+                both_have_value = has_value[:,None] & has_value[None, :]
 
-            # If nickname column has been passed, seperate fuzzying will be performed on this column
-            if col == nickname_col:
+                # If nickname column has been passed, seperate fuzzying will be performed on this column
+                if col == nickname_col:
 
-                for (i, name_a), (j, name_b) in combinations(enumerate(records), 2):
-                    # Doing a lookup on the nickname dictionary to create an intersecting set for names that are eachothers nicknames
-                    match = bool(
-                        nicknames.get(name_a, set()) & nicknames.get(name_b, set())
-                    )
+                    for (i, name_a), (j, name_b) in combinations(enumerate(records), 2):
+                        # Doing a lookup on the nickname dictionary to create an intersecting set for names that are eachothers nicknames
+                        match = bool(
+                            nicknames.get(name_a, set()) & nicknames.get(name_b, set())
+                        )
 
-                    # Names with an intesecting set of nicknames > 0 are given a score of 100
-                    # The main match criteria used later on will mitigate false positives
-                    if match:
-                        matrices[nickname_col][i, j] = 100
-                        
+                        # Names with an intesecting set of nicknames > 0 are given a score of 100
+                        # The main match criteria used later on will mitigate false positives
+                        if match:
+                            matrices[nickname_col][i, j] = 100
+                            
 
-                    # No nickname matches, WRatio will be used to fuzzy match
-                    else:
-                        score = fuzz.WRatio(name_a, name_b)
-                        matrices[nickname_col][i, j] = score
-                matrices[nickname_col] = np.where(both_have_value,matrices[nickname_col], np.nan)
-            
-            
-            else:
+                        # No nickname matches, WRatio will be used to fuzzy match
+                        else:
+                            score = fuzz.WRatio(name_a, name_b)
+                            matrices[nickname_col][i, j] = score
+                    matrices[nickname_col] = np.where(both_have_value,matrices[nickname_col], np.nan)
+                
+                
+                else:
 
-                scores = process.cdist(records, records, scorer=fuzz.WRatio)
-                name = f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col
-                matrices[name] += scores
-                matrices[name] = np.where(both_have_value, matrices[name], np.nan)
-       
+                    scores = process.cdist(records, records, scorer=fuzz.WRatio)
+                    name = f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col
+                    matrices[name] += scores
+                    matrices[name] = np.where(both_have_value, matrices[name], np.nan)
         
-        # For every specific column score matrix in matrices if both columns were present to be fuzzy matched will receive a value of 1
-        # Each matrix will be added together to determine how many fields were not nan values. This is then used to redistribute the weights.    
-        mask = np.array([pd.notna(v) for v in matrices.values()])
-        total_filled = np.zeros((n,n))
-        for m in mask:
-            total_filled += np.where(m, 1,0)
-    
-       
-        # Creates a matrix with how many fields return a matching score of over 95.
-        # Creating a count for how many fields the two comparing records have in common
-        hits = {k: v >= u_bound for k, v in matrices.items()}
-        hit_count = sum(v.astype(int) for v in hits.values())
-        gate_mask = (matrices[main_match_criteria] >= u_bound) & (hit_count >= 1)
-        final_matrix_mask = np.where(gate_mask,True,False)
-        
-        for col,weight in cols.items():
             
-            res = np.reciprocal(total_filled)
-            res +=weight
-               
-            matrices[f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col] *= weight 
-        final_matrix = np.where(final_matrix_mask,np.nansum(list(matrices.values()),axis=0),0)  
-    
+            # For every specific column score matrix in matrices if both columns were present to be fuzzy matched will receive a value of 1
+            # Each matrix will be added together to determine how many fields were not nan values. This is then used to redistribute the weights.    
+            mask = np.array([pd.notna(v) for v in matrices.values()])
+            total_filled = np.zeros((n,n))
+            for m in mask:
+                total_filled += np.where(m, 1,0)
         
-        # Assign scores to df
-        assign_scores(final_matrix, block_df, score_array, dsu, l_bound)
+        
+            # Creates a matrix with how many fields return a matching score of over 95.
+            # Creating a count for how many fields the two comparing records have in common
+            hits = {k: v >= u_bound for k, v in matrices.items()}
+            hit_count = sum(v.astype(int) for v in hits.values())
+            gate_mask = (matrices[main_match_criteria] >= u_bound) & (hit_count >= 1)
+            final_matrix_mask = np.where(gate_mask,True,False)
+            
+            for col,weight in cols.items():
+                
+                res = np.reciprocal(total_filled)
+                res +=weight
+                
+                matrices[f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col] *= weight 
+            final_matrix = np.where(final_matrix_mask,np.nansum(list(matrices.values()),axis=0),0)  
+        
+            
+            # Assign scores to df
+            assign_scores(final_matrix, block_df, score_array, dsu, l_bound)
 
     main_df = assign_match_id(main_df=main_df, dsu=dsu, match_field=match_field)
     label_df(main_df=main_df, score_array=score_array, u_bound=u_bound)
