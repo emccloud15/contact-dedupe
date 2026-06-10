@@ -12,7 +12,7 @@ from dedupe.dsu import DSU
 from dedupe.normalize import normalize_df
 from dedupe.core_dedupe import run_strict_dedupe, run_fuzzy_dedupe
 
-from common.exceptions import ConfigError, UserExit
+from common.exceptions import ConfigError
 from common.utils import load_data_df
 from common.logger import get_logger
 from common.models import ClientConfig, Blocking
