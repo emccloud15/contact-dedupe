@@ -1,7 +1,0 @@
-pandas>=2.0
-numpy>=1.24
-rapidfuzz>=3.0
-pydantic>=2.0
-PyYAML>=6.0
-openpyxl>=3.0
-nicknames>=1.0
