@@ -7,8 +7,6 @@ from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
 from common.models import Columns
 from common.exceptions import ConfigError
 
-# For fuzzy later. If there could be nicknames causing duplicates. "Christina" "Tina". This takes every name from the provided name column (typically the firstname column)
-# Does a lookup in the python nicknames package dictionary and replaces nicknames with their name. If "Tina" is in the name column it will be replaced with "Christina"
 
 
 # This function is used when calling the cleaning function incase a column name in the yaml is not actually in the dataframe
