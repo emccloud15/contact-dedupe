@@ -17,6 +17,8 @@ class Columns(BaseModel):
     address: Optional[ColumnTypeConfig] = None
     name: Optional[ColumnTypeConfig] = None
 
+class Virtuous(BaseModel):
+    contact_type: bool
 
 class Blocking(BaseModel):
     strict: bool
@@ -33,7 +35,7 @@ class Bounds(BaseModel):
 class ClientConfig(BaseModel):
     CLIENT_NAME: str
     COLUMNS: Columns
-    VIRTUOUS: Optional[bool] = None
+    VIRTUOUS: Optional[Virtuous]
     BLOCKING: Blocking
     MAIN_MATCH_CRITERIA: str
     MATCH_FIELD: str
@@ -73,3 +75,4 @@ class ClientConfig(BaseModel):
             )
         else:
             return self
+
