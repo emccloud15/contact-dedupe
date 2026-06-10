@@ -1,0 +1,60 @@
+CLIENT_NAME: 'MARY_BIRD' # REQUIRED This will be used to check the settings file is loading the correct client file & for the output file name
+
+COLUMNS: # REQUIRED 4 possible columns keys. phone, email, address, name. at least one of these is required. If any is included then all the fields within that type are required except weight
+         # Each phone, email, and name field will be deduped separately. The address columns will always be combined and deduped as one. 
+         # For example there could be 'Home Phone', 'Work Phone', 'Other Email', 'Email1' each of these fields will be checked for duplicates
+         # whereas for the address columns 'Address Line 1', 'City', 'State', 'Postal' will always be combined. 
+  phone: 
+    include_name: False
+    weight: 0.10  # Optional -> float field: The weight is per column in the group. So for weight 0.12 each phone column will be weighted at 0.12
+                  # Default will auto balance each weight to equal amounts
+    columns: # REQUIRED -> string field: the exact names of the field names in the file you want deduped on
+    - Primary Phone Number
+    - Primary Other Phone
+    - Primary Mobile Phone
+    - Primary Work Phone
+  
+  
+  email:
+    include_name: False
+    weight: 0.10
+    columns:
+    - Primary Email Address
+    - Primary Other Email
+    - Primary Work Email
+  address: 
+    include_name: False
+    weight: 0.30 # The address weight is for one address column as all of the address fields are combined into one address column
+    columns:
+    - Primary Address Line 1
+    - Primary Address Line 2
+    - Primary Address City
+    - Primary Address State
+    - Primary Address Postal
+ 
+  name:
+    weight: 0.5
+    columns:
+    - Primary First Name
+    - Primary Last Name
+
+NICKNAME: Primary First Name # Optional -> string field: This needs to be a column name. During the fuzzy phase this column will be checked first against a cache of nicknames. 
+                             # Usually only the first name column should be used for the nickname lookup
+
+VIRTUOUS:
+  contact_type: True
+  
+BLOCKING: # REQUIRED 
+  strict: True # If blocking should be used during the strict dedupeing phase as well. Will only find duplicates within the block
+  type: "idx"
+  column: idx
+  
+MAIN_MATCH_CRITERIA: address
+
+MATCH_FIELD: Id # REQUIRED -> Column with a unique id. Used to identify master records in duplicate groups. 
+                            # For example: id: 1, Name: John Smith, Root: 1, id: 2, Name: John Smith, Root: 1
+
+BOUNDS: # Optional -> Upper and lower bounds for determining if a fuzzy record is a match or needs to be checked. If no option is specified the default values are 75 and 90
+  u_bound: 90
+  l_bound: 45
+
