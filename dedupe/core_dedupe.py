@@ -31,7 +31,7 @@ def label_df(main_df: pd.DataFrame, score_array: NDArray, u_bound: float) -> Non
 
 def assign_match_id(main_df: pd.DataFrame, dsu: DSU, match_field: str) -> pd.DataFrame:
     main_df['root'] = main_df.index.map(dsu.find)
-    match_field = re.sub(r"[\.]","",match_field).lower()
+    match_field = re.sub(r"\.","",match_field).lower()
     try:
         main_df["match_id"] = main_df["root"].map(main_df[match_field])
     except KeyError:
@@ -85,7 +85,7 @@ def run_strict_dedupe(df: pd.DataFrame, cols: list[str], dsu: DSU, main_match: s
                     dsu.union(label_indices[0], label_indices[i])
     
     df = assign_match_id(main_df=df,dsu=dsu, match_field=main_match)
-    df["count"] = df.groupby("match_id").cumcount() + 1
+    df["count"] = 1
     return df
 
 def run_fuzzy_dedupe(
