@@ -4,8 +4,17 @@ import re
 from datetime import datetime
 from pathlib import Path
 import sys
+from typing import Optional
 
-from common.models import Virtuous
+from contact_dedupe.common.models import Virtuous
+
+class FinalFile:
+    def __init__(self, df: pd.DataFrame) -> None:
+        pass
+class VirtuousFile(FinalFile):
+    def __init_(self, df: pd.DataFrame) -> None:
+        super().__init__(df)
+
 
 def clean_column(col: str)-> str | None:
     if col == 'Duplicate dupe':
@@ -57,7 +66,7 @@ def create_check_file(df: pd.DataFrame, output_path: str, u_bound: float) -> Non
 
     check_file.to_csv(output_path, index=False)
 
-def create_virtuous_file(df: pd.DataFrame, output_path: str, u_bound: float, l_bound: float) -> None:
+def create_virtuous_file(df: pd.DataFrame, contact_type_df: Optional[pd.DataFrame], output_dir: Path, u_bound: float, l_bound: float) -> None:
     primary_df = df[df['order'] == 1]
     comparative_df = df[df['order'] == 2]
     
@@ -70,9 +79,7 @@ def create_virtuous_file(df: pd.DataFrame, output_path: str, u_bound: float, l_b
     
 
     final_df = pd.concat([primary_df,comparative_df], axis=1)
-    final_df.to_csv(output_path, index=False)
-    sys.exit()
-    
+
 
     # This labels rows where 1 and only one value matched. If a record only matched on email they should be given a look
     duplicate_cols = [col for col in compared_record_cols if col.endswith('_dupe')]
@@ -100,14 +107,15 @@ def create_virtuous_file(df: pd.DataFrame, output_path: str, u_bound: float, l_b
 
     # Mask ensures if contact type is ignored from earlier that does not get overwritten
 
-    final_df.loc['Merge'] = np.select(condlist=conditions, choicelist=choices, default='CHECK')
+    final_df['Duplicate dupe'] = np.select(condlist=conditions, choicelist=choices, default='CHECK')
 
     
     col_map = {col : clean_column(col) for col in final_df.columns}
     final_df = final_df[[col for col,new in col_map.items() if new]]
     final_df.columns = [new for new in col_map.values() if new]
 
-    
+    final_df = pd.concat([final_df, contact_type_df])
+    output_path = output_dir / f"test.csv"
     final_df.to_csv(output_path, index=False)
 
 def create_final_file(
@@ -134,8 +142,5 @@ def create_final_file(
 
 
     # Virtuous file output
-    if virtuous:
-        virtuous_output_path = f"{output_path}/{client_name}_virtuous_{today}.csv"
-        create_virtuous_file(df=df, output_path=virtuous_output_path, u_bound=u_bound, l_bound=l_bound)
-        
+
        

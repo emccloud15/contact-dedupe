@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 import numpy as np
-from common.utils import load_client_config, load_data_df
+from contact_dedupe.common.utils import load_client_config, load_data_df
 
 from typing import Tuple
 

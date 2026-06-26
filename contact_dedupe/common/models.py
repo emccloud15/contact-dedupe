@@ -2,7 +2,7 @@ from pydantic import BaseModel, model_validator
 from typing import Optional
 
 
-from common.exceptions import ConfigError
+from contact_dedupe.common.exceptions import ConfigError
 
 
 class ColumnTypeConfig(BaseModel):
@@ -35,7 +35,7 @@ class Bounds(BaseModel):
 class ClientConfig(BaseModel):
     CLIENT_NAME: str
     COLUMNS: Columns
-    VIRTUOUS: Optional[Virtuous]
+    VIRTUOUS: Optional[Virtuous] = None
     BLOCKING: Blocking
     MAIN_MATCH_CRITERIA: str
     MATCH_FIELD: str

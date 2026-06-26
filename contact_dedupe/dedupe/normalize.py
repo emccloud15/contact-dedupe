@@ -2,10 +2,10 @@ import pandas as pd
 from typing import Callable
 import click
 
-from dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
+from contact_dedupe.dedupe.cleaning import clean_name, clean_email, clean_phone, clean_address
 
-from common.models import Columns
-from common.exceptions import ConfigError
+from contact_dedupe.common.models import Columns
+from contact_dedupe.common.exceptions import ConfigError
 
 
 
@@ -37,32 +37,35 @@ def normalize_contact_method(
 ) -> pd.DataFrame:
     
     df = df.copy()
+
     clean_fns = {
-        'name': clean_name,
         'address': clean_address,
         'phone': clean_phone,
         'email': clean_email
     }
     clean_fn = clean_fns[contact_type]
 
+    # Get columns for contact type from client config yaml
     columns = [col for col in getattr(data, contact_type).columns]
 
+    # Safely apply cleaning functions to each contact type col and build a list of series. 
+    # If there are 3 phone fields this will be a list of each phone field cleaned in a series.
+    # Cleaning functions can be found in cleaning file. 
     contact_type_series = [safe_apply(df=df, col=col, clean_fn=clean_fn) for col in columns]
 
-    if contact_type == 'name':
-        name_cache['names'] = contact_type_series
-  
+    
+    # Because addresses will always hve multiple columns but should always be compared together all address columns will be combined. 
     if contact_type == 'address':
         contact_type_series = [combine_address(contact_type_series)]
     
+
     for series in contact_type_series:
         
-
         mask = series.notna()
         parts = [series[mask]]
-       
-
-        if contact_type != 'name' and getattr(data, contact_type).include_name:
+        
+        # Adding the name columns from the name cache if user set include name to true in yaml.
+        if getattr(data, contact_type).include_name:
 
             parts += [s[mask] for s in name_cache['names']]
             joined_name = pd.concat(parts, axis=1).agg("|".join, axis=1)
@@ -81,19 +84,19 @@ def normalize_contact_method(
 
 
 # Step 1. Uncleaned Original Data Frame passed as well as the columns from the client yaml as data
-def normalize_df(df: pd.DataFrame, data: Columns) -> pd.DataFrame:
+def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> pd.DataFrame:
     
-    # Ensures the name data is passed into the normalizing function first. That way i can clean the name data and store it
-    # to be used in case we want to append the names to the contact columns
-
-    contact_type_order = ['name','email','phone','address']
-    contact_types = [field for field,value in data if value]
-    contact_types.sort(key=lambda x: contact_type_order.index(x))
-
+    # Build a cache of cleaned name columns to be attached to other contact cols if user choice
     name_cache ={}
+    if data.name:
+        name_cols = [value for value in data.name.columns]
+        name_cache['names'] = [safe_apply(df,col,clean_name) for col in name_cols]
+
+
     with click.progressbar(contact_types, label='cleaning data') as bar:
+        # Passing every contact type and their respective yaml column data except name.
         final_cleaned_dfs = [
-            normalize_contact_method(df=df, data=data, contact_type=contact_type, name_cache=name_cache)
-            for contact_type in bar]
+            normalize_contact_method(df=df, data=data, contact_type=ct, name_cache=name_cache)
+            for ct in bar if ct != 'name']
     
     return df.join(final_cleaned_dfs) # type: ignore

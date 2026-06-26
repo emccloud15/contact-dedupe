@@ -1,33 +1,25 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "contact-dedupe"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "click>=8.4.1",
     "nicknames>=1.0.1",
     "numpy>=2.4.6",
-    "openpyxl>=3.1.5",
     "pandas>=3.0.3",
     "pydantic>=2.13.4",
-    "pytest>=9.0.3",
     "pyyaml>=6.0.3",
     "questionary>=2.1.1",
     "rapidfuzz>=3.14.5",
-    "tqdm>=4.67.3",
 ]
 
-[tool.setuptools]
-py-modules = ["run"]
-packages = ["common", "dedupe"]
-
 [project.scripts]
-dedupe = "run:main"
+contact-dedupe = "contact_dedupe.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
