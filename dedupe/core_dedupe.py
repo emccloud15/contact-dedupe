@@ -1,4 +1,5 @@
 import click
+import re
 import pandas as pd
 from pandas.core.groupby import DataFrameGroupBy
 import numpy as np
@@ -30,6 +31,7 @@ def label_df(main_df: pd.DataFrame, score_array: NDArray, u_bound: float) -> Non
 
 def assign_match_id(main_df: pd.DataFrame, dsu: DSU, match_field: str) -> pd.DataFrame:
     main_df['root'] = main_df.index.map(dsu.find)
+    match_field = re.sub(r"[\.]","",match_field).lower()
     try:
         main_df["match_id"] = main_df["root"].map(main_df[match_field])
     except KeyError:
