@@ -35,7 +35,7 @@ def load_client_config(file_path: Path) -> ClientConfig:
         logger.info(f"{client_settings.CLIENT_NAME} config loaded")
     except ValidationError as e:
         raise ConfigError(
-            f"Invalid client configuration. Check file for labeling errors: {file_path}"
+            f"Invalid client configuration. Check file for labeling errors: {file_path} {e}"
         ) from e
     return client_settings
 
