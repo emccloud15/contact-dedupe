@@ -28,4 +28,4 @@ def clean_address(a: str) -> Optional[str]:
     if pd.isna(a) or isinstance(a, str) and not a.strip():
         return None
     a = str(a)
-    return re.sub(r"[\s\"\'\-,]", "", str(a)).lower()
+    return re.sub(r"[\s\"\'\-,\.]", "", str(a)).lower()
