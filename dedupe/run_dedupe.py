@@ -126,10 +126,10 @@ def run_dedupe(client_cfg: ClientConfig, original_df: pd.DataFrame) -> pd.DataFr
 
 
     # Takes the virtuous health tool download
-    if client_cfg.VIRTUOUS:
-        original_df, virtuous_contact_type_df = virtuous_table_setup(original_df, client_cfg.VIRTUOUS.contact_type)
-    else:
-        virtuous_contact_type_df = None
+    # if client_cfg.VIRTUOUS:
+    #     original_df, virtuous_contact_type_df = virtuous_table_setup(original_df, client_cfg.VIRTUOUS.contact_type)
+    # else:
+    #     virtuous_contact_type_df = None
 
     # Normalize the df
     normalized_df = normalize_df(original_df, client_cfg.COLUMNS)
@@ -196,8 +196,8 @@ def run_dedupe(client_cfg: ClientConfig, original_df: pd.DataFrame) -> pd.DataFr
         match_field=client_cfg.MATCH_FIELD,
         nickname_col=client_cfg.NICKNAME,
     )
-    if virtuous_contact_type_df is not None:
-        return main_df
+    # if virtuous_contact_type_df is not None:
+    #     return main_df
         
     
     return main_df
