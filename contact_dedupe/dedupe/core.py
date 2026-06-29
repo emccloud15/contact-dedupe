@@ -159,7 +159,10 @@ class Dedupe:
                         self.dsu.union(label_indices[0], label_indices[i])
         
         df = self._assign_match_id(group_df=df)
-        df["count"] = df.groupby("match_id").cumcount() + 1
+        if self.client_cfg.BLOCKING.type == 'id':
+            df['count'] = 1
+        else:
+            df["count"] = df.groupby("match_id").cumcount() + 1
         return df
     
     def run_strict_dedupe(self) -> None:
@@ -284,7 +287,7 @@ class Dedupe:
                 final_matrix = np.where(final_matrix_mask,np.nansum(list(matrices.values()),axis=0),0)  
             
                 
-                # Assign scores to df
+                # Assign scores to df and apply dsu
                 self._assign_scores(final_matrix, block_df, score_array)
 
                 self._assign_match_id(self.main_df)
