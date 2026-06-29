@@ -2,7 +2,7 @@ from pydantic import BaseModel, model_validator
 from typing import Optional
 
 
-from common.exceptions import ConfigError
+from .exceptions import ConfigError
 
 
 class ColumnTypeConfig(BaseModel):
@@ -16,9 +16,6 @@ class Columns(BaseModel):
     email: Optional[ColumnTypeConfig] = None
     address: Optional[ColumnTypeConfig] = None
     name: Optional[ColumnTypeConfig] = None
-
-class Virtuous(BaseModel):
-    contact_type: bool
 
 class Blocking(BaseModel):
     strict: bool
