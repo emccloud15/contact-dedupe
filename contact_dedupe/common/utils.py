@@ -4,9 +4,9 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from contact_dedupe.common.logger import get_logger
-from contact_dedupe.common.exceptions import DataLoadError, ConfigError
-from contact_dedupe.common.models import ClientConfig
+from .logger import get_logger
+from .exceptions import DataLoadError, ConfigError
+from .models import ClientConfig
 
 logger = get_logger(__name__)
 

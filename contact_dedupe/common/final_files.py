@@ -6,14 +6,6 @@ from pathlib import Path
 import sys
 from typing import Optional
 
-from contact_dedupe.common.models import Virtuous
-
-class FinalFile:
-    def __init__(self, df: pd.DataFrame) -> None:
-        pass
-class VirtuousFile(FinalFile):
-    def __init_(self, df: pd.DataFrame) -> None:
-        super().__init__(df)
 
 
 def clean_column(col: str)-> str | None:
@@ -35,7 +27,7 @@ def clean_column(col: str)-> str | None:
     if match:
         middle = re.sub(r':.*', '', match.group(1))
         middle = middle.replace('_',' ')
-        return f"{prefix} {middle}".strip()
+        return f"{prefix} {middle}_dupe".strip()
     else:
         return col
     
@@ -118,29 +110,6 @@ def create_virtuous_file(df: pd.DataFrame, contact_type_df: Optional[pd.DataFram
     output_path = output_dir / f"test.csv"
     final_df.to_csv(output_path, index=False)
 
-def create_final_file(
-    df: pd.DataFrame,
-    output_path: Path,
-    client_name: str,
-    u_bound: float,
-    l_bound: float,
-    virtuous: Virtuous | None
-) -> None:
-    
-    today = datetime.today().date()
-    df['score'] = df['score'].round(0)
 
-
-    # Master file output
-    df.sort_values("match_id").to_csv(
-        f"{output_path}/{client_name}_master_{today}.csv", index=False
-    )
-
-    # Check file output
-    # check_output_path = f"{output_path}/{client_name}_check_{today}.csv"
-    # create_check_file(df, check_output_path, u_bound)
-
-
-    # Virtuous file output
 
        

@@ -2,22 +2,21 @@ import pandas as pd
 import numpy as np
 from pandas.core.groupby import DataFrameGroupBy
 from numpy.typing import NDArray
-import sys
 import click
 import questionary
 
-from typing import Optional
+
 from nicknames import NickNamer
 from itertools import combinations
 from rapidfuzz import process, fuzz
 
 
-from contact_dedupe.dedupe.dsu import DSU
-from contact_dedupe.dedupe.normalize import normalize_df
+from .dsu import DSU
+from .normalize import normalize_df
 
 from contact_dedupe.common.exceptions import ConfigError
 from contact_dedupe.common.logger import get_logger
-from contact_dedupe.common.models import ClientConfig, Blocking
+from contact_dedupe.common.models import ClientConfig
 
 
 
@@ -319,10 +318,9 @@ class Dedupe:
         return self.main_df
     
 class VirtuousDedupe(Dedupe):
-    def __init__(self, client_cfg: ClientConfig, df: pd.DataFrame) -> None:
+    def __init__(self, client_cfg: ClientConfig, df: pd.DataFrame, contact_type: bool) -> None:
         super().__init__(client_cfg, df)
-        virtuous = client_cfg.VIRTUOUS
-        self.contact_type = bool(virtuous and virtuous.contact_type)
+        self.contact_type = contact_type
 
     def _check_contact_type(self) -> None:
 
