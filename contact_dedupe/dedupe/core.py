@@ -160,8 +160,10 @@ class Dedupe:
         
         df = self._assign_match_id(group_df=df)
         if self.client_cfg.BLOCKING.type == 'id':
+            print("count should be 1")
             df['count'] = 1
         else:
+            print("Count will not be just 1")
             df["count"] = df.groupby("match_id").cumcount() + 1
         return df
     
