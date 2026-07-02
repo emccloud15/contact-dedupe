@@ -1,6 +1,7 @@
 import pandas as pd
 from typing import Callable
 import click
+import sys
 
 from .cleaning import clean_name, clean_email, clean_phone, clean_address
 
@@ -91,6 +92,7 @@ def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> p
     if data.name:
         name_cols = [value for value in data.name.columns]
         name_cache['names'] = [safe_apply(df,col,clean_name) for col in name_cols]
+        
 
 
     with click.progressbar(contact_types, label='cleaning data') as bar:
@@ -98,5 +100,12 @@ def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> p
         final_cleaned_dfs = [
             normalize_contact_method(df=df, data=data, contact_type=ct, name_cache=name_cache)
             for ct in bar if ct != 'name']
+        
+        name_dfs = pd.concat(name_cache['names'], axis=1)
+        name_dfs = name_dfs.rename(columns={col:f"clean_{col}:name" for col in name_dfs.columns})
+
+        final_cleaned_dfs.append(name_dfs)
+    
+        
     
     return df.join(final_cleaned_dfs) # type: ignore

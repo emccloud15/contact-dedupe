@@ -4,6 +4,7 @@ from pandas.core.groupby import DataFrameGroupBy
 from numpy.typing import NDArray
 import click
 import questionary
+import sys
 
 
 from nicknames import NickNamer
@@ -147,7 +148,9 @@ class Dedupe:
             df.loc[~mask, f"{col}_dupe"] = False
         
         dupe_cols = [f"{col}_dupe" for col in self.strict_dedupe_cols]
-        mask = (df[dupe_cols] == True).sum(axis=1) >=3
+        dupe_main_match_criteria = next((col for col in dupe_cols if self.main_match_criteria in col), None)
+
+        mask = (df[dupe_main_match_criteria] == True) & ((df[dupe_cols] == True).sum(axis=1) >=3)
         df.loc[mask, 'dupe'] = True
         df.loc[mask,"combined_cols"] = df.apply(lambda row: "|".join([row[col] for col in self.strict_dedupe_cols if row[f"{col}_dupe"] == True]), axis=1)
         
@@ -201,8 +204,7 @@ class Dedupe:
         nicknames = {}
 
         blocks = self._create_block(True)
-        matrix_names = [f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col for col in self.fuzzy_dedupe_col_weights.keys()]
-        
+        matrix_names = [f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else f"{col.split(":")[0].strip()}" for col in self.fuzzy_dedupe_col_weights.keys() if ":" in col]
 
         # Looping through blocks to fuzzy on. Blocking can be changed in client yaml
         with click.progressbar(blocks, label="fuzzy matching") as bar:
@@ -234,7 +236,7 @@ class Dedupe:
                     both_have_value = has_value[:,None] & has_value[None, :]
 
                     # If nickname column has been passed, seperate fuzzying will be performed on this column
-                    if col == self.nickname_col:
+                    if col == self.nickname_col and self.nickname_col is not None:
 
                         for (i, name_a), (j, name_b) in combinations(enumerate(records), 2):
                             # Doing a lookup on the nickname dictionary to create an intersecting set for names that are eachothers nicknames
@@ -258,7 +260,7 @@ class Dedupe:
                     else:
 
                         scores = process.cdist(records, records, scorer=fuzz.WRatio)
-                        name = f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col
+                        name = f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else f"{col.split(":")[0].strip()}"
                         matrices[name] += scores
                         matrices[name] = np.where(both_have_value, matrices[name], np.nan)
             
@@ -270,12 +272,12 @@ class Dedupe:
                 for m in mask:
                     total_filled += np.where(m, 1,0)
             
-            
-                # Creates a matrix with how many fields return a matching score of over 95.
+       
+                # Creates a matrix with how many fields return a matching score of over config set upper bound.
                 # Creating a count for how many fields the two comparing records have in common
                 hits = {k: v >= self.u_bound for k, v in matrices.items()}
                 hit_count = sum(v.astype(int) for v in hits.values())
-                gate_mask = (matrices[self.main_match_criteria] >= self.u_bound) & (hit_count >= 1)
+                gate_mask = (matrices[self.main_match_criteria] >= self.u_bound) | (hit_count >= 2)
                 final_matrix_mask = np.where(gate_mask,True,False)
                 
                 for col,weight in self.fuzzy_dedupe_col_weights.items():
@@ -283,7 +285,7 @@ class Dedupe:
                     res = np.reciprocal(total_filled)
                     res +=weight
                     
-                    matrices[f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else col] *= weight 
+                    matrices[f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else f"{col.split(":")[0].strip()}"] *= weight 
                 final_matrix = np.where(final_matrix_mask,np.nansum(list(matrices.values()),axis=0),0)  
             
                 
@@ -305,7 +307,7 @@ class Dedupe:
         
         # Run strict dedupe
         self.run_strict_dedupe()
-       
+        
         # We fuzzy on columns without the name attached. So we grab only the cleaned columns without the name attached. 
         self.fuzzy_dedupe_cols = [col for col in self.main_df.columns if col.endswith((':address',':email',':phone',':name'))]
 
@@ -380,6 +382,7 @@ class VirtuousDedupe(Dedupe):
         
         # Run strict dedupe
         self.run_strict_dedupe()
+        
        
         # We fuzzy on columns without the name attached. So we grab only the cleaned columns without the name attached. 
         self.fuzzy_dedupe_cols = [col for col in self.main_df.columns if col.endswith((':address',':email',':phone',':name'))]

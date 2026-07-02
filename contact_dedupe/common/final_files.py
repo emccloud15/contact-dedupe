@@ -27,7 +27,7 @@ def clean_column(col: str)-> str | None:
     if match:
         middle = re.sub(r':.*', '', match.group(1))
         middle = middle.replace('_',' ')
-        return f"{prefix} {middle}_dupe".strip()
+        return f"{prefix} {middle} Dupe".strip()
     else:
         return col
     
@@ -58,7 +58,7 @@ def create_check_file(df: pd.DataFrame, output_path: str, u_bound: float) -> Non
 
     check_file.to_csv(output_path, index=False)
 
-def create_virtuous_file(df: pd.DataFrame, contact_type_df: Optional[pd.DataFrame], output_dir: Path, u_bound: float, l_bound: float) -> None:
+def create_virtuous_file(df: pd.DataFrame, contact_type_df: Optional[pd.DataFrame], output_dir: Path, u_bound: float, l_bound: float, client_name: str) -> None:
     primary_df = df[df['order'] == 1]
     comparative_df = df[df['order'] == 2]
     
@@ -71,7 +71,7 @@ def create_virtuous_file(df: pd.DataFrame, contact_type_df: Optional[pd.DataFram
     
 
     final_df = pd.concat([primary_df,comparative_df], axis=1)
-
+    
 
     # This labels rows where 1 and only one value matched. If a record only matched on email they should be given a look
     duplicate_cols = [col for col in compared_record_cols if col.endswith('_dupe')]
@@ -80,11 +80,12 @@ def create_virtuous_file(df: pd.DataFrame, contact_type_df: Optional[pd.DataFram
         (final_df['Duplicate score'] == 0) & (final_df[duplicate_cols].sum(axis=1) > 1),
     ]
     choices = [
-        45,
-        55,
+        l_bound,
+        l_bound + 10,
     ]
 
     final_df['Duplicate score'] = np.select(condlist=conditions, choicelist=choices, default=final_df['Duplicate score'])
+
 
     conditions = [
         (final_df['Duplicate score'] <= u_bound) & (final_df['Duplicate score'] >= l_bound),
@@ -105,9 +106,8 @@ def create_virtuous_file(df: pd.DataFrame, contact_type_df: Optional[pd.DataFram
     col_map = {col : clean_column(col) for col in final_df.columns}
     final_df = final_df[[col for col,new in col_map.items() if new]]
     final_df.columns = [new for new in col_map.values() if new]
-
     final_df = pd.concat([final_df, contact_type_df])
-    output_path = output_dir / f"test.csv"
+    output_path = output_dir / f"{client_name}_{datetime.today().date()}.csv"
     final_df.to_csv(output_path, index=False)
 
 

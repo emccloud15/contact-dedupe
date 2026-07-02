@@ -36,7 +36,7 @@ def main(dir):
 
             virtuous = VirtuousDedupe(client_cfg=client_config, df=dupe_df, contact_type=result)
             deduped_df = virtuous.run()
-            create_virtuous_file(df=deduped_df, contact_type_df=virtuous.virtuous_contact_type_df, output_dir=output_path, u_bound=client_config.BOUNDS.u_bound, l_bound=client_config.BOUNDS.l_bound)
+            create_virtuous_file(df=deduped_df, contact_type_df=virtuous.virtuous_contact_type_df, output_dir=output_path, u_bound=client_config.BOUNDS.u_bound, l_bound=client_config.BOUNDS.l_bound, client_name=client_config.CLIENT_NAME)
 
         else:
             main_df = Dedupe(client_cfg=client_config, df=dupe_df)

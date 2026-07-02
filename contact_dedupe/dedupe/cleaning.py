@@ -27,5 +27,7 @@ def clean_phone(p: str | int | float) -> Optional[str]:
 def clean_address(a: str) -> Optional[str]:
     if pd.isna(a) or isinstance(a, str) and not a.strip():
         return None
+    
     a = str(a)
+    a = a.split("-")[0]
     return re.sub(r"[\s\"\'\-,\.]", "", str(a)).lower()
