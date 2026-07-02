@@ -40,7 +40,9 @@ def main(dir):
 
         else:
             main_df = Dedupe(client_cfg=client_config, df=dupe_df)
-            main_df.run()
+            final_df = main_df.run()
+            final_df.to_csv(output_path / f"master_dedupe_{datetime.today().date()}.csv", index=False)
+            
 
         logger.info("Dedupe complete")
 
