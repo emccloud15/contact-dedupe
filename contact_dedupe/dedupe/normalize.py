@@ -100,11 +100,11 @@ def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> p
         final_cleaned_dfs = [
             normalize_contact_method(df=df, data=data, contact_type=ct, name_cache=name_cache)
             for ct in bar if ct != 'name']
-        
-        name_dfs = pd.concat(name_cache['names'], axis=1)
-        name_dfs = name_dfs.rename(columns={col:f"clean_{col}:name" for col in name_dfs.columns})
+        if data.name:
+            name_dfs = pd.concat(name_cache['names'], axis=1)
+            name_dfs = name_dfs.rename(columns={col:f"clean_{col}:name" for col in name_dfs.columns})
 
-        final_cleaned_dfs.append(name_dfs)
+            final_cleaned_dfs.append(name_dfs)
     
         
     

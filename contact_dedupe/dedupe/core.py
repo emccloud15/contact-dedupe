@@ -2,9 +2,10 @@ import pandas as pd
 import numpy as np
 from pandas.core.groupby import DataFrameGroupBy
 from numpy.typing import NDArray
+from typing import Optional
 import click
 import questionary
-import sys
+
 
 
 from nicknames import NickNamer
@@ -35,6 +36,7 @@ class Dedupe:
         self.l_bound = self.client_cfg.BOUNDS.l_bound
         self.main_match_criteria = self.client_cfg.MAIN_MATCH_CRITERIA
         self.match_field = self.client_cfg.MATCH_FIELD
+        self.address = self.client_cfg.ADDRESS
 
         self.original_df = df
         self.contact_types = [field for field,value in self.client_cfg.COLUMNS if value]
@@ -137,7 +139,7 @@ class Dedupe:
         np.maximum.at(score_array, block_df.index[rows], scores)
         np.maximum.at(score_array, block_df.index[columns], scores)
 
-    def _strict_dedupe(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _strict_dedupe(self, df: pd.DataFrame, address: Optional[bool] = False) -> pd.DataFrame:
         df.loc[:, "dupe"] = pd.NA
         df.loc[:, "score"] = pd.NA
 
@@ -149,8 +151,10 @@ class Dedupe:
         
         dupe_cols = [f"{col}_dupe" for col in self.strict_dedupe_cols]
         dupe_main_match_criteria = next((col for col in dupe_cols if self.main_match_criteria in col), None)
-
-        mask = (df[dupe_main_match_criteria] == True) & ((df[dupe_cols] == True).sum(axis=1) >=3)
+        if address:
+            mask = df[dupe_main_match_criteria] == True
+        else:
+            mask = (df[dupe_main_match_criteria] == True) & ((df[dupe_cols] == True).sum(axis=1) >=3)
         df.loc[mask, 'dupe'] = True
         df.loc[mask,"combined_cols"] = df.apply(lambda row: "|".join([row[col] for col in self.strict_dedupe_cols if row[f"{col}_dupe"] == True]), axis=1)
         
@@ -162,10 +166,11 @@ class Dedupe:
                         self.dsu.union(label_indices[0], label_indices[i])
         
         df = self._assign_match_id(group_df=df)
-        if self.client_cfg.BLOCKING.type == 'id':
-            df['count'] = 1
-        else:
-            df["count"] = df.groupby("match_id").cumcount() + 1
+        df["count"] = df.groupby("match_id").cumcount() + 1
+        # if self.client_cfg.BLOCKING.type == 'id':
+        #     df['count'] = 1
+        # else:
+        #     df["count"] = df.groupby("match_id").cumcount() + 1
         return df
     
     def run_strict_dedupe(self) -> None:
@@ -185,7 +190,7 @@ class Dedupe:
             results = []
             with click.progressbar(length=len(group), label="strict deduping") as bar:
                 for _, group_df in group:
-                    result = self._strict_dedupe(group_df)
+                    result = self._strict_dedupe(group_df,self.address)
                     results.append(result)
                     bar.update(1)
 
@@ -194,7 +199,7 @@ class Dedupe:
             self.main_df.loc[result_df.index, temp_cols] = result_df[temp_cols]
         else:
             with click.progressbar(length=len(self.main_df), label="strict deduping") as bar:
-                self.main_df = self._strict_dedupe(self.main_df)
+                self.main_df = self._strict_dedupe(self.main_df, self.address)
 
     def run_fuzzy_dedupe(self) -> None:
 

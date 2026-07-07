@@ -37,6 +37,7 @@ class ClientConfig(BaseModel):
     MATCH_FIELD: str
     NICKNAME: Optional[str] = None
     BOUNDS: Bounds
+    ADDRESS: Optional[bool] = False
 
     @model_validator(mode="after")
     def validate_main_match_criteria(self) -> ClientConfig:
