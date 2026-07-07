@@ -167,10 +167,6 @@ class Dedupe:
         
         df = self._assign_match_id(group_df=df)
         df["count"] = df.groupby("match_id").cumcount() + 1
-        # if self.client_cfg.BLOCKING.type == 'id':
-        #     df['count'] = 1
-        # else:
-        #     df["count"] = df.groupby("match_id").cumcount() + 1
         return df
     
     def run_strict_dedupe(self) -> None:
