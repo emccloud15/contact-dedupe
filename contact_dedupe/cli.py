@@ -54,6 +54,8 @@ def main(dir):
         sys.exit(1)
     except KeyboardInterrupt as e:
         click.echo(f"{e}\nExiting...")
+    except KeyError as e:
+        click.echo(f"Field not found. If this is a Virtuous dedupe, ensure the 'Duplicate' prefixed fields were included in the export. {e}" )
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@ from numpy.typing import NDArray
 from typing import Optional
 import click
 import questionary
+import sys
 
 
 
@@ -330,6 +331,7 @@ class VirtuousDedupe(Dedupe):
 
     def _check_contact_type(self) -> None:
 
+
         mask = (self.original_df['Type'] != self.original_df['Duplicate Type'])
         self.virtuous_contact_type_df = self.original_df.loc[mask]
         self.virtuous_dupe_df = self.original_df.loc[~mask].reset_index(drop=True)
@@ -365,17 +367,21 @@ class VirtuousDedupe(Dedupe):
        
     def run(self) -> pd.DataFrame:
         
+        try:
         # If config has contact_type option as true, we will completely ignore any contact records with mismatching contact types and remove them early.
-        if self.contact_type:
-            self._check_contact_type()
-        else:
-            self.virtuous_dupe_df = self.original_df
+            if self.contact_type:
+                self._check_contact_type()
+            else:
+                self.virtuous_dupe_df = self.original_df
 
-        # Reformat virtuous df into dedupe formatted df
-        self._table_setup()
+            # Reformat virtuous df into dedupe formatted df
+            self._table_setup()
+        except KeyError as e:
+            raise KeyError(f"Virtuous data health export missing field: {e}")
 
         # Clean & combine columns
         self.main_df = normalize_df(df=self.virtuous_dupe_df, data=self.client_cfg.COLUMNS, contact_types=self.contact_types)
+       
         self.dsu = DSU(len(self.main_df))
 
         # We only dedupe on these columns - the normalized columns chosen by client in yaml
