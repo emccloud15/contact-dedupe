@@ -38,6 +38,7 @@ class Dedupe:
         self.main_match_criteria = self.client_cfg.MAIN_MATCH_CRITERIA
         self.match_field = self.client_cfg.MATCH_FIELD
         self.address = self.client_cfg.ADDRESS
+        self.strict = self.client_cfg.STRICT_MATCH
 
         self.original_df = df
         self.contact_types = [field for field,value in self.client_cfg.COLUMNS if value]
@@ -111,7 +112,7 @@ class Dedupe:
         ]
         self.main_df['score'] = np.select(condlist=conditions, choicelist=choices, default=0)
         self.main_df.loc[self.main_df['score']==0, 'dupe'] = False
-        mask = self.main_df['score'] > self.u_bound
+        mask = self.main_df['score'] >= self.u_bound
         self.main_df.loc[mask,'dupe'] = True
 
     def _assign_match_id(self, group_df: pd.DataFrame) -> pd.DataFrame:
@@ -279,7 +280,12 @@ class Dedupe:
                 # Creating a count for how many fields the two comparing records have in common
                 hits = {k: v >= self.u_bound for k, v in matrices.items()}
                 hit_count = sum(v.astype(int) for v in hits.values())
-                gate_mask = (matrices[self.main_match_criteria] >= self.u_bound) | (hit_count >= 2)
+
+                if self.strict:
+                    gate_mask = (matrices[self.main_match_criteria] >= self.u_bound) & (hit_count >= 2)
+                else:
+                    gate_mask = (matrices[self.main_match_criteria] >= self.u_bound) | (hit_count >= 2)
+
                 final_matrix_mask = np.where(gate_mask,True,False)
                 
                 for col,weight in self.fuzzy_dedupe_col_weights.items():
