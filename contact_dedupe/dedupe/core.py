@@ -89,7 +89,8 @@ class Dedupe:
     # Create either grouping for entire dedupe process or blocking for fuzzy only
     def _create_block(self, fuzzy: bool) -> DataFrameGroupBy:
         if fuzzy:
-            dupe_df = self.main_df[self.main_df["count"] == 1]
+            mask = (self.main_df["count"] == 1) | (self.main_df["dupe"] != True)
+            dupe_df = self.main_df.loc[mask]
         else:
             dupe_df = self.main_df
 
@@ -309,6 +310,7 @@ class Dedupe:
         # Normalize the dataframe when instance is created
         self.main_df = normalize_df(df=self.original_df, data=self.client_cfg.COLUMNS, contact_types=self.contact_types)
         self.dsu = DSU(len(self.main_df)) 
+        
 
         # We only dedupe on these columns - the normalized columns chosen by client in yaml
         self._create_dedupe_col_list()

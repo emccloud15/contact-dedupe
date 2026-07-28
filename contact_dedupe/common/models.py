@@ -1,4 +1,4 @@
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, model_validator, field_validator
 from typing import Optional
 
 
@@ -8,7 +8,12 @@ from .exceptions import ConfigError
 class ColumnTypeConfig(BaseModel):
     include_name: bool = False
     weight: list[tuple[str, float]] | float = 0.0
-    columns: list[str] = []
+    columns: list[str]  = []
+    combine: list[str] = []
+
+
+
+
 
 
 class Columns(BaseModel):
@@ -42,13 +47,11 @@ class ClientConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_main_match_criteria(self) -> ClientConfig:
-        allowed = []
-        for field_name, field_value in self.COLUMNS:
+        allowed = ['address']
+        for _,field_value in self.COLUMNS:
             if field_value is not None:
-                if field_name in ["phone", "email", "name"]:
-                    allowed.extend(field_value.columns)
-                else:
-                    allowed.append("address")
+                allowed.extend(field_value.columns)
+                
         if self.MAIN_MATCH_CRITERIA not in allowed:
             raise ConfigError(
                 f"The MAIN_MATCH_CRITERIA value must be one of {allowed}."
@@ -73,4 +76,20 @@ class ClientConfig(BaseModel):
             )
         else:
             return self
+
+    @model_validator(mode='after')
+    def validate_at_least_one_has_data(self):
+        for ct in self.COLUMNS:
+            if ct[1] is not None:
+                if not ct[1].columns and not ct[1].combine:
+                    raise ConfigError(f"Both 'columns' and 'combine' can not be empty for field: '{ct[0]}'.")
+        return self
+    @model_validator(mode='after')
+    def validate_combine_has_multiple_fields(self):
+        for ct in self.COLUMNS:
+            if ct[1] is not None:
+                if ct[1].combine:
+                    if len(ct[1].combine) < 2:
+                        raise ConfigError(f"To use the 'combine' setting for: '{ct[0]}' at least two fields must be listed. One field can not be combined with itself\n Current 'combine' listed fields: {ct[1].combine}")
+        return self
 

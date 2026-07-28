@@ -19,12 +19,12 @@ def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str | None]
     except Exception as e:
         raise ConfigError(f"Error processing column: {col}: {e}")
 
-def combine_address(addresses: list[pd.Series]) -> pd.Series:
-    address_df = pd.concat(addresses, axis=1)
+def combine_fields(fields: list[pd.Series], contact_type: str) -> pd.Series:
+    field_df = pd.concat(fields, axis=1)
     def join_row(row: pd.Series) ->str:
         vals = [v for v in row if pd.notna(v)]
         return ''.join(vals) if vals else pd.NA # type: ignore
-    return address_df.apply(join_row, axis=1).rename("address")
+    return field_df.apply(join_row, axis=1).rename(f"{contact_type}_combined")
 
 # Step 3. Create the normalized columns provided by cleaning them and combining them into one column
 # Only creates rows when there is no null value for one of the fields being combined.
@@ -48,17 +48,32 @@ def normalize_contact_method(
 
     # Get columns for contact type from client config yaml
     columns = [col for col in getattr(data, contact_type).columns]
+    combine_columns = [col for col in getattr(data, contact_type).combine]
+    all_columns = columns + combine_columns
+    
+    
 
-    # Safely apply cleaning functions to each contact type col and build a list of series. 
+
+    # Safely apply cleaning functions to each contact type col in both the combine and columns fields and build a list of series. 
     # If there are 3 phone fields this will be a list of each phone field cleaned in a series.
     # Cleaning functions can be found in cleaning file. 
-    contact_type_series = [safe_apply(df=df, col=col, clean_fn=clean_fn) for col in columns]
 
+    cleaned_column_series = [safe_apply(df=df, col=col, clean_fn=clean_fn) for col in all_columns]
     
     # Because addresses will always hve multiple columns but should always be compared together all address columns will be combined. 
-    if contact_type == 'address':
-        contact_type_series = [combine_address(contact_type_series)]
+   
     
+    if combine_columns and columns:
+        combine_series = [s for s in cleaned_column_series if s.name in combine_columns]
+        combined_field = [combine_fields(combine_series, contact_type)]
+        
+        contact_type_series = [s for s in cleaned_column_series if s.name in columns] + combined_field
+    elif columns:
+        contact_type_series = [s for s in cleaned_column_series if s.name in columns]
+    else:
+        combine_series = [s for s in cleaned_column_series if s.name in combine_columns]
+        combined_field = [combine_fields(combine_series, contact_type)]
+        contact_type_series = combined_field
 
     for series in contact_type_series:
         
@@ -90,10 +105,13 @@ def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> p
     # Build a cache of cleaned name columns to be attached to other contact cols if user choice
     name_cache ={}
     if data.name:
-        name_cols = [value for value in data.name.columns]
-        name_cache['names'] = [safe_apply(df,col,clean_name) for col in name_cols]
-        
-
+        name_cols = [value for value in data.name.columns if data.name.columns]
+        combine_name_cols = [value for value in data.name.combine if data.name.combine]
+        if name_cols:
+            name_cache['names'] = [safe_apply(df,col,clean_name) for col in name_cols]
+        else:
+            name_series = [safe_apply(df,col,clean_name) for col in combine_name_cols]
+            name_cache['names'] = ([combine_fields(name_series,'names')])
 
     with click.progressbar(contact_types, label='cleaning data') as bar:
         # Passing every contact type and their respective yaml column data except name.
@@ -101,11 +119,15 @@ def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> p
             normalize_contact_method(df=df, data=data, contact_type=ct, name_cache=name_cache)
             for ct in bar if ct != 'name']
         if data.name:
+            # Create the combined name column if user chooses
+            if data.name.combine:
+                name_cache['names'] += ([combine_fields(name_cache['names'],'names')])
+
+            # Rename and add name series into final cleaned output df
             name_dfs = pd.concat(name_cache['names'], axis=1)
             name_dfs = name_dfs.rename(columns={col:f"clean_{col}:name" for col in name_dfs.columns})
 
             final_cleaned_dfs.append(name_dfs)
     
         
-    
     return df.join(final_cleaned_dfs) # type: ignore
