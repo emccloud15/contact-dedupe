@@ -30,6 +30,7 @@ logger = get_logger(__name__)
 class Dedupe:
     def __init__(self, client_cfg: ClientConfig, df: pd.DataFrame) -> None:
         self.client_cfg = client_cfg
+        self.client_name = self.client_cfg.CLIENT_NAME
         self.portion = self.client_cfg.BLOCKING.portion
         self.blocking = self.client_cfg.BLOCKING.column
         self.nickname_col = self.client_cfg.NICKNAME
