@@ -337,12 +337,22 @@ class VirtuousDedupe(Dedupe):
         super().__init__(client_cfg, df)
         self.contact_type = contact_type
 
+        try:
+        # If config has contact_type option as true, we will completely ignore any contact records with mismatching contact types and remove them early.
+            if self.contact_type:
+                self._check_contact_type()
+    
+            # Reformat virtuous df into dedupe formatted df
+            self._table_setup()
+        except KeyError as e:
+            raise KeyError(f"Virtuous data health export missing field: {e}")
+
     def _check_contact_type(self) -> None:
 
 
         mask = (self.original_df['Type'] != self.original_df['Duplicate Type'])
         self.virtuous_contact_type_df = self.original_df.loc[mask]
-        self.virtuous_dupe_df = self.original_df.loc[~mask].reset_index(drop=True)
+        self.original_df = self.original_df.loc[~mask].reset_index(drop=True)
         
         self.virtuous_contact_type_df.loc[:,'Merge'] = 'IGNORE'
         self.virtuous_contact_type_df.loc[:,'Duplicate score'] = 0
@@ -353,65 +363,25 @@ class VirtuousDedupe(Dedupe):
     def _table_setup(self):
         try:
             # The virtuous output file names all the duplicate fields starting with 'Duplicate' except for the legacy id field. They name that 'Legacy Duplicate Id' 
-            self.virtuous_dupe_df = self.virtuous_dupe_df.rename(columns={'Legacy Duplicate Id': 'Duplicate Legacy Id'})
+            self.original_df = self.original_df.rename(columns={'Legacy Duplicate Id': 'Duplicate Legacy Id'})
         except:
             pass
         
-        self.virtuous_dupe_df.loc[:,'idx'] = self.virtuous_dupe_df.index
-        self.virtuous_dupe_df.loc[:,'Duplicate idx'] = self.virtuous_dupe_df.index
-        self.virtuous_dupe_df.loc[:,'order'] = 1
-        self.virtuous_dupe_df.loc[:,'Duplicate order'] = 2
-        self.virtuous_dupe_df.loc[:, 'Duplicate Match Qualifiers'] = self.virtuous_dupe_df.loc[:, 'Match Qualifiers']
-        primary_cols = [col for col in self.virtuous_dupe_df.columns if 'Duplicate' not in col]
+        self.original_df.loc[:,'idx'] = self.original_df.index
+        self.original_df.loc[:,'Duplicate idx'] = self.original_df.index
+        self.original_df.loc[:,'order'] = 1
+        self.original_df.loc[:,'Duplicate order'] = 2
+        self.original_df.loc[:, 'Duplicate Match Qualifiers'] = self.original_df.loc[:, 'Match Qualifiers']
+        primary_cols = [col for col in self.original_df.columns if 'Duplicate' not in col]
         duplicate_cols = ['Duplicate ' + col for col in primary_cols]
-        primary_df = self.virtuous_dupe_df.loc[:,primary_cols]
-        duplicate_df = self.virtuous_dupe_df.loc[:,duplicate_cols]
+        primary_df = self.original_df.loc[:,primary_cols]
+        duplicate_df = self.original_df.loc[:,duplicate_cols]
         duplicate_df.columns = primary_df.columns
 
-        self.virtuous_dupe_df = pd.concat([primary_df, duplicate_df], ignore_index=True)
+        self.original_df = pd.concat([primary_df, duplicate_df], ignore_index=True)
         
-   
+     
 
-       
-    def run(self) -> pd.DataFrame:
-        
-        try:
-        # If config has contact_type option as true, we will completely ignore any contact records with mismatching contact types and remove them early.
-            if self.contact_type:
-                self._check_contact_type()
-            else:
-                self.virtuous_dupe_df = self.original_df
-
-            # Reformat virtuous df into dedupe formatted df
-            self._table_setup()
-        except KeyError as e:
-            raise KeyError(f"Virtuous data health export missing field: {e}")
-
-        # Clean & combine columns
-        self.main_df = normalize_df(df=self.virtuous_dupe_df, data=self.client_cfg.COLUMNS, contact_types=self.contact_types)
-       
-        self.dsu = DSU(len(self.main_df))
-
-        # We only dedupe on these columns - the normalized columns chosen by client in yaml
-        self._create_dedupe_col_list()
-        
-        # Run strict dedupe
-        self.run_strict_dedupe()
-        
-       
-        # We fuzzy on columns without the name attached. So we grab only the cleaned columns without the name attached. 
-        self.fuzzy_dedupe_cols = [col for col in self.main_df.columns if col.endswith((':address',':email',':phone',':name'))]
-
-        # Update column weight dictionary. Specified in client config
-        self._column_weights()
-
-        # Ensure given weights add to 1.0
-        self._test_weights()
-
-        # Run fuzzy dedupe
-        self.run_fuzzy_dedupe()
-
-        return self.main_df
 
 
           
