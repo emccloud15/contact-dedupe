@@ -11,11 +11,6 @@ class ColumnTypeConfig(BaseModel):
     columns: list[str]  = []
     combine: list[str] = []
 
-
-
-
-
-
 class Columns(BaseModel):
     phone: Optional[ColumnTypeConfig] = None
     email: Optional[ColumnTypeConfig] = None
