@@ -31,6 +31,7 @@ class Bounds(BaseModel):
 
 class ClientConfig(BaseModel):
     CLIENT_NAME: str
+    BASE: Optional[bool] = False
     COLUMNS: Columns
     BLOCKING: Blocking
     MAIN_MATCH_CRITERIA: str
