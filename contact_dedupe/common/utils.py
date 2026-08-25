@@ -35,7 +35,6 @@ class Utilities:
             raise DataLoadError(f"Failed to load client config file: {file_path}") from e
         try:
             client_settings = ClientConfig(**raw_config)
-            logger.info(f"{client_settings.CLIENT_NAME} config loaded")
         except ValidationError as e:
             raise ConfigError(
                 f"Invalid client configuration. Check file for labeling errors: {file_path}"
