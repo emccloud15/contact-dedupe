@@ -154,11 +154,13 @@ class Dedupe:
             df.loc[~mask, f"{col}_dupe"] = False
         
         dupe_cols = [f"{col}_dupe" for col in self.strict_dedupe_cols]
+        print(len(dupe_cols))
         dupe_main_match_criteria = next((col for col in dupe_cols if self.main_match_criteria in col), None)
         if address:
             mask = df[dupe_main_match_criteria] == True
         else:
-            mask = (df[dupe_main_match_criteria] == True) & ((df[dupe_cols] == True).sum(axis=1) >=3)
+            # For dupe to be labeled true before fuzzy the main match criteria has to be true and all but one column has to also be an exact match. 
+            mask = (df[dupe_main_match_criteria] == True) & ((df[dupe_cols] == True).sum(axis=1) >= (len(dupe_cols)-1))
         df.loc[mask, 'dupe'] = True
         df.loc[mask,"combined_cols"] = df.apply(lambda row: "|".join([row[col] for col in self.strict_dedupe_cols if row[f"{col}_dupe"] == True]), axis=1)
         
