@@ -154,7 +154,6 @@ class Dedupe:
             df.loc[~mask, f"{col}_dupe"] = False
         
         dupe_cols = [f"{col}_dupe" for col in self.strict_dedupe_cols]
-        print(len(dupe_cols))
         dupe_main_match_criteria = next((col for col in dupe_cols if self.main_match_criteria in col), None)
         if address:
             mask = df[dupe_main_match_criteria] == True
