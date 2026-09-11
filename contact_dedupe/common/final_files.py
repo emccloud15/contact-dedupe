@@ -8,28 +8,6 @@ from typing import Optional
 
 
 
-def clean_column(col: str)-> str | None:
-    if col == 'Duplicate dupe':
-        return 'Merge'
-    
-    if col.startswith(('clean_','idx','order','count','root')):
-        return None
-    if col in ['dupe', 'score', 'match_id']:
-        return None
-    if any(word in col for word in ['root','count','order']):
-        return None
-    if ((col.startswith('Duplicate clean_')) & (not col.endswith('dupe'))):
-        return None
-    
-    prefix = "" if col.startswith("Duplicate") else "Duplicate"
-
-    match = re.search(r'clean_(.*?)_dupe', col)
-    if match:
-        middle = re.sub(r':.*', '', match.group(1))
-        middle = middle.replace('_',' ')
-        return f"{prefix} {middle} Dupe".strip()
-    else:
-        return col
     
 
 # Columns for the final check file
@@ -58,57 +36,6 @@ def create_check_file(df: pd.DataFrame, output_path: str, u_bound: float) -> Non
 
     check_file.to_csv(output_path, index=False)
 
-def create_virtuous_file(df: pd.DataFrame, contact_type_df: Optional[pd.DataFrame], output_dir: Path, u_bound: float, l_bound: float, client_name: str) -> None:
-    primary_df = df[df['order'] == 1]
-    comparative_df = df[df['order'] == 2]
-    
-
-    compared_record_cols = [f"Duplicate {col}" for col in df.columns]
-    comparative_df.columns = compared_record_cols
-
-    primary_df = primary_df.set_index('idx')
-    comparative_df = comparative_df.set_index('Duplicate idx')
-    
-
-    final_df = pd.concat([primary_df,comparative_df], axis=1)
-    
-
-    # This labels rows where 1 and only one value matched. If a record only matched on email they should be given a look
-    duplicate_cols = [col for col in compared_record_cols if col.endswith('_dupe')]
-    conditions = [
-        (final_df['Duplicate score'] == 0) & (final_df[duplicate_cols].sum(axis=1) == 1),
-        (final_df['Duplicate score'] == 0) & (final_df[duplicate_cols].sum(axis=1) > 1),
-    ]
-    choices = [
-        l_bound,
-        l_bound + 10,
-    ]
-
-    final_df['Duplicate score'] = np.select(condlist=conditions, choicelist=choices, default=final_df['Duplicate score'])
-
-
-    conditions = [
-        (final_df['Duplicate score'] <= u_bound) & (final_df['Duplicate score'] >= l_bound),
-        (final_df['Duplicate score'] < l_bound),
-        (final_df['Duplicate score'] > u_bound)
-    ]
-    choices = [
-        'CHECK',
-        'IGNORE',
-        'MERGE'
-    ]
-
-    # Mask ensures if contact type is ignored from earlier that does not get overwritten
-
-    final_df['Duplicate dupe'] = np.select(condlist=conditions, choicelist=choices, default='CHECK')
-
-    
-    col_map = {col : clean_column(col) for col in final_df.columns}
-    final_df = final_df[[col for col,new in col_map.items() if new]]
-    final_df.columns = [new for new in col_map.values() if new]
-    final_df = pd.concat([final_df, contact_type_df])
-    output_path = output_dir / f"{client_name}_{datetime.today().date()}.csv"
-    final_df.to_csv(output_path, index=False)
 
 
 

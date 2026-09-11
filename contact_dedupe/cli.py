@@ -4,10 +4,10 @@ import questionary
 from pathlib import Path
 from datetime import datetime
 
+import argparse
 from .common.utils import Utilities
 from .common.logger import get_logger
-from .dedupe.core import Dedupe, VirtuousDedupe
-from .common.final_files import create_virtuous_file
+from .dedupe.core import Dedupe
 from .common.exceptions import DataLoadError, ConfigError
 
 logger = get_logger(__name__)
@@ -17,31 +17,57 @@ class CleanPath(click.Path):
     def convert(self, value, param, ctx):
         value = str(value).strip("'").strip('"')
         return super().convert(value,param,ctx)
-    
 
-@click.command()
-@click.option("--dir", type=CleanPath(exists=True), default=None, required=True, prompt="Directory containing file to be deduped, and the yaml config")
-def main(dir):
-    virtuous = questionary.confirm("Is this dedupe file from the virtuous health tool?").ask()
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Dedupe a CSV file based on a YAML config")
+    parser.add_argument("--yaml", type=CleanPath(exists=True), help="Path to the YAML config file")
+    parser.add_argument("--file", type=CleanPath(exists=True), help="Path to the CSV file to be deduped")
+    parser.add_argument("--output", type=CleanPath(), help="Path to the output directory for the deduped CSV file")
+    return parser
+
+def choose_file_or_directory(prompt: str, type: str) -> Path:
+    """Open a native file picker, falling back to a terminal prompt."""
     try:
-        yaml_file, dupe_file = Utilities.load_data_from_dir(Path(dir))
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()  # Hide the main window
+        if type == "directory":
+            selected = filedialog.askdirectory(title=prompt)
+        else:
+            selected = filedialog.askopenfilename(
+                title=prompt,
+                filetypes=[("YAML files", "*.yaml"), ("CSV files", "*.csv")]
+            )
+        root.destroy()
+        if selected:
+            return Path(selected).resolve()
+    except Exception:
+        logger.warning("tkinter is not available. Falling back to terminal prompt.")
+        pass
+
+    # Fallback to terminal prompt if tkinter is not available
+    selected = questionary.path(prompt).ask()
+    if not selected:
+        raise click.ClickException("No file selected.")
+    return Path(selected).expanduser().resolve()
+
+def main(argv: list[str] | None = None):
+    args = build_parser().parse_args(argv)
+    try:
+        yaml_file = args.yaml or choose_file_or_directory("Select the YAML config file", "file")
+        dupe_file = args.file or choose_file_or_directory("Select the CSV file to be deduped", "file")
+        output_dir = args.output or choose_file_or_directory("Select the output directory", "directory")
         client_config = Utilities.load_client_config(yaml_file)
         dupe_df = Utilities.load_data_df(dupe_file)
-        output_path = Path(dir).resolve().parent / f"Output_{client_config.CLIENT_NAME}_{datetime.today().date()}"
+        output_path = output_dir / f"Output_{client_config.CLIENT_NAME}_{datetime.today().date()}"
         output_path.mkdir(parents=True, exist_ok=True)
         
 
-        if virtuous:
-            result = questionary.confirm(message="Strict dedupe on contact type?").ask()
-
-            virtuous = VirtuousDedupe(client_cfg=client_config, df=dupe_df, contact_type=result)
-            deduped_df = virtuous.run()
-            create_virtuous_file(df=deduped_df, contact_type_df=virtuous.virtuous_contact_type_df, output_dir=output_path, u_bound=client_config.BOUNDS.u_bound, l_bound=client_config.BOUNDS.l_bound, client_name=client_config.CLIENT_NAME)
-
-        else:
-            main_df = Dedupe(client_cfg=client_config, df=dupe_df)
-            final_df = main_df.run()
-            final_df.to_csv(output_path / f"master_dedupe_{datetime.today().date()}.csv", index=False)
+        main_df = Dedupe(client_cfg=client_config, df=dupe_df)
+        final_df = main_df.run()
+        final_df.to_csv(output_path / f"master_dedupe_{datetime.today().date()}.csv", index=False)
             
 
         logger.info("Dedupe complete")

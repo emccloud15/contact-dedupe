@@ -1,7 +1,6 @@
 import pandas as pd
 from typing import Callable
 import click
-import sys
 
 from .cleaning import clean_name, clean_email, clean_phone, clean_address
 
