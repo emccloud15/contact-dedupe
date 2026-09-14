@@ -40,6 +40,7 @@ class Dedupe:
         self.match_field = self.client_cfg.MATCH_FIELD
         self.address = self.client_cfg.ADDRESS
         self.strict = self.client_cfg.STRICT_MATCH
+        self.exclusion_col = self.client_cfg.EXCLUSION.column if self.client_cfg.EXCLUSION else None
 
         self.original_df = df
         self.contact_types = [field for field,value in self.client_cfg.COLUMNS if value]
@@ -134,6 +135,14 @@ class Dedupe:
         if len(pairs) < 1:
             return
 
+        if self.exclusion_col:
+            pairs = np.array([
+                (i,j) for i,j in pairs 
+                if block_df[self.exclusion_col].iloc[i] != block_df[self.exclusion_col].iloc[j]
+            ])
+            if len(pairs) < 1:
+                return
+
         for i, j in pairs:
             self.dsu.union(block_df.index[i], block_df.index[j])
 
@@ -150,6 +159,11 @@ class Dedupe:
         # Dedupe on each of the client chosen normalized columns
         for col in self.strict_dedupe_cols:
             mask = df[col].duplicated(keep=False) & df[col].notna()
+
+            if self.exclusion_col:
+                exclusion_mask = df[self.exclusion_col].duplicated(keep=False) & df[self.exclusion_col].notna()
+                mask = mask & ~exclusion_mask
+                
             df.loc[mask, f"{col}_dupe"] = True
             df.loc[~mask, f"{col}_dupe"] = False
         
@@ -235,7 +249,6 @@ class Dedupe:
 
                 # Normalized columns to fuzzy on
                 for col, weight in self.fuzzy_dedupe_col_weights.items():
-
                     records = block_df[col].to_list()
                     # Creating a boolean NxN matrix for whether or not a record for the current column is nan
                     has_value = np.array([pd.notna(v) for v in records])
@@ -245,6 +258,8 @@ class Dedupe:
                     if col == self.nickname_col and self.nickname_col is not None:
 
                         for (i, name_a), (j, name_b) in combinations(enumerate(records), 2):
+                            if self.exclusion_col and block_df[self.exclusion_col].iloc[i] == block_df[self.exclusion_col].iloc[j]:
+                                    continue
                             # Doing a lookup on the nickname dictionary to create an intersecting set for names that are eachothers nicknames
                             match = bool(
                                 nicknames.get(name_a, set()) & nicknames.get(name_b, set())

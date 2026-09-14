@@ -41,8 +41,12 @@ def choose_file_or_directory(prompt: str, type: str) -> Path:
                 filetypes=[("YAML files", "*.yaml"), ("CSV files", "*.csv")]
             )
         root.destroy()
-        if selected:
-            return Path(selected).resolve()
+        if not selected:
+            raise click.ClickException("No file selected.")
+   
+        return Path(selected).resolve()
+    except click.ClickException:
+        raise
     except Exception:
         logger.warning("tkinter is not available. Falling back to terminal prompt.")
         pass
@@ -56,9 +60,9 @@ def choose_file_or_directory(prompt: str, type: str) -> Path:
 def main(argv: list[str] | None = None):
     args = build_parser().parse_args(argv)
     try:
-        yaml_file = args.yaml or choose_file_or_directory("Select the YAML config file", "file")
-        dupe_file = args.file or choose_file_or_directory("Select the CSV file to be deduped", "file")
-        output_dir = args.output or choose_file_or_directory("Select the output directory", "directory")
+        yaml_file = Path(args.yaml) or choose_file_or_directory("Select the YAML config file", "file")
+        dupe_file = Path(args.file) or choose_file_or_directory("Select the CSV file to be deduped", "file")
+        output_dir = Path(args.output) or choose_file_or_directory("Select the output directory", "directory")
         client_config = Utilities.load_client_config(yaml_file)
         dupe_df = Utilities.load_data_df(dupe_file)
         output_path = output_dir / f"Output_{client_config.CLIENT_NAME}_{datetime.today().date()}"

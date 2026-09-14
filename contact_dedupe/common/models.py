@@ -23,6 +23,8 @@ class Blocking(BaseModel):
     column: str
     portion: Optional[str] = None
 
+class Exclusion(BaseModel):
+    column: str
 
 class Bounds(BaseModel):
     u_bound: float = 90.0
@@ -34,6 +36,7 @@ class ClientConfig(BaseModel):
     BASE: Optional[bool] = False
     COLUMNS: Columns
     BLOCKING: Blocking
+    EXCLUSION: Optional[Exclusion] = None
     MAIN_MATCH_CRITERIA: str
     MATCH_FIELD: str
     NICKNAME: Optional[str] = None
@@ -56,7 +59,7 @@ class ClientConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_blocking(self) -> ClientConfig:
-        allowed_type = ["zipcode", "state", "id", "name", "idx"]
+        allowed_type = ["zipcode", "state", "id", "name", "idx","contact_type"]
         allowed_portion = ["start", "end"]
 
         if self.BLOCKING.type.lower() not in allowed_type:
