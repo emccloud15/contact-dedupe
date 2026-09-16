@@ -285,14 +285,6 @@ class Dedupe:
                         matrices[name] += scores
                         matrices[name] = np.where(both_have_value, matrices[name], np.nan)
             
-                
-                # For every specific column score matrix in matrices if both columns were present to be fuzzy matched will receive a value of 1
-                # Each matrix will be added together to determine how many fields were not nan values. This is then used to redistribute the weights.    
-                mask = np.array([pd.notna(v) for v in matrices.values()])
-                total_filled = np.zeros((n,n))
-                for m in mask:
-                    total_filled += np.where(m, 1,0)
-            
        
                 # Creates a matrix with how many fields return a matching score of over config set upper bound.
                 # Creating a count for how many fields the two comparing records have in common
@@ -305,14 +297,38 @@ class Dedupe:
                     gate_mask = (matrices[self.main_match_criteria] >= self.u_bound) | (hit_count >= 2)
 
                 final_matrix_mask = np.where(gate_mask,True,False)
+
+                 # For every specific column score matrix in matrices if both columns were present to be fuzzy matched will receive a value of 1
+                # Each matrix will be added together to determine how many fields were not nan values. This is then used to redistribute the weights.    
                 
+
+                weighted_scores_sum = np.zeros((n,n))
+                active_weights_sum = np.zeros((n,n))
+
                 for col,weight in self.fuzzy_dedupe_col_weights.items():
-                    
-                    res = np.reciprocal(total_filled)
-                    res +=weight
-                    
-                    matrices[f"{col.split("_")[1].split(':')[0].strip()}" if "_" in col else f"{col.split(":")[0].strip()}"] *= weight 
-                final_matrix = np.where(final_matrix_mask,np.nansum(list(matrices.values()),axis=0),0)  
+
+                    field_key = col.split("_")[1].split(":")[0].strip() if "_" in col else col.split(":")[0].strip()
+                    if field_key not in matrices:
+                        continue
+
+                    matrix = matrices[field_key]
+
+                    valid_mask = pd.notna(matrix)
+
+                    clean_matrix = np.nan_to_num(matrix, nan=0.0)
+
+                    weighted_scores_sum += clean_matrix * weight
+
+                    active_weights_sum += valid_mask * weight
+
+                redistributed_matrix = np.divide(
+                    weighted_scores_sum,
+                    active_weights_sum,
+                    out = np.zeros((n,n)),
+                    where = active_weights_sum != 0
+                )
+
+                final_matrix = np.where(final_matrix_mask,redistributed_matrix,0)  
             
                 
                 # Assign scores to df and apply dsu
