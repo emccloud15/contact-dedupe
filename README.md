@@ -149,3 +149,8 @@ Tests live in `tests/` and run with `pytest` (configured via `[tool.pytest.ini_o
 uv run pytest
 ```
 
+Phase 1 establishes baseline coverage for configuration loading, CSV loading,
+cleaning, and normalization. The current suite has one documented expected
+failure for the next phase: `clean_name(pd.NA)` is currently converted to
+`"na"` instead of remaining missing. Missing-value preservation is addressed
+in Phase 2.
