@@ -15,6 +15,11 @@ dependencies = [
     "rapidfuzz>=3.14.5",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
 [project.scripts]
 contact-dedupe = "contact_dedupe.cli:main"
 
@@ -23,3 +28,4 @@ where = ["."]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+python_files = ["test_*.py", "*_test.py", "tests.py"]
