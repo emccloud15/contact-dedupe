@@ -1,15 +1,37 @@
-from pydantic import BaseModel, model_validator, field_validator
+import math
 from typing import Optional
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .exceptions import ConfigError
 
 
 class ColumnTypeConfig(BaseModel):
+    model_config = ConfigDict(validate_assignment=True)
+
     include_name: bool = False
     weight: list[tuple[str, float]] | float = 0.0
-    columns: list[str]  = []
-    combine: list[str] = []
+    columns: list[str] = Field(default_factory=list)
+    combine: list[str] = Field(default_factory=list)
+
+    @field_validator("columns", "combine")
+    @classmethod
+    def validate_column_names(cls, values: list[str]) -> list[str]:
+        if any(not isinstance(value, str) or not value.strip() for value in values):
+            raise ValueError("configured column names must be non-empty strings")
+        if len(values) != len(set(values)):
+            raise ValueError("configured column names must not be duplicated")
+        return values
+
+    @field_validator("weight")
+    @classmethod
+    def validate_weights(cls, value):
+        pairs = value if isinstance(value, list) else [(None, value)]
+        for field_name, weight in pairs:
+            if not isinstance(weight, (int, float)) or not math.isfinite(weight) or not 0 <= weight <= 1:
+                label = f" for {field_name!r}" if field_name else ""
+                raise ValueError(f"weight{label} must be a finite number between 0 and 1")
+        return value
 
 class Columns(BaseModel):
     phone: Optional[ColumnTypeConfig] = None
@@ -23,12 +45,32 @@ class Blocking(BaseModel):
     column: str
     portion: Optional[str] = None
 
+    @field_validator("type", "column")
+    @classmethod
+    def validate_non_empty(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("blocking type and column must be non-empty")
+        return value
+
 class Exclusion(BaseModel):
     column: str
 
 class Bounds(BaseModel):
     u_bound: float = 90.0
     l_bound: float = 75.0
+
+    @field_validator("u_bound", "l_bound")
+    @classmethod
+    def validate_bound(cls, value: float) -> float:
+        if not math.isfinite(value) or not 0 <= value <= 100:
+            raise ValueError("matching bounds must be between 0 and 100")
+        return value
+
+    @model_validator(mode="after")
+    def validate_bound_order(self):
+        if self.l_bound > self.u_bound:
+            raise ValueError("BOUNDS.l_bound must be less than or equal to BOUNDS.u_bound")
+        return self
 
 
 class ClientConfig(BaseModel):
@@ -44,6 +86,13 @@ class ClientConfig(BaseModel):
     ADDRESS: Optional[bool] = False
     STRICT_MATCH: Optional[bool] = False
 
+    @field_validator("CLIENT_NAME", "MAIN_MATCH_CRITERIA", "MATCH_FIELD")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("required configuration values must be non-empty strings")
+        return value
+
     @model_validator(mode="after")
     def validate_main_match_criteria(self) -> ClientConfig:
         allowed = ['address']
@@ -55,6 +104,12 @@ class ClientConfig(BaseModel):
             raise ConfigError(
                 f"The MAIN_MATCH_CRITERIA value must be one of {allowed}."
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_has_configured_fields(self):
+        if not any(field_value is not None for _, field_value in self.COLUMNS):
+            raise ConfigError("At least one contact field must be configured in COLUMNS.")
         return self
 
     @model_validator(mode="after")
@@ -91,4 +146,3 @@ class ClientConfig(BaseModel):
                     if len(ct[1].combine) < 2:
                         raise ConfigError(f"To use the 'combine' setting for: '{ct[0]}' at least two fields must be listed. One field can not be combined with itself\n Current 'combine' listed fields: {ct[1].combine}")
         return self
-

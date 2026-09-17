@@ -10,6 +10,27 @@ from contact_dedupe.common.exceptions import ConfigError
 
 
 # This function is used when calling the cleaning function incase a column name in the yaml is not actually in the dataframe
+def configured_columns(data: Columns) -> list[str]:
+    columns: list[str] = []
+    for _, field_config in data:
+        if field_config is not None:
+            columns.extend(field_config.columns)
+            columns.extend(field_config.combine)
+    return list(dict.fromkeys(columns))
+
+
+def validate_input_columns(
+    df: pd.DataFrame,
+    data: Columns,
+    required_columns: list[str] | None = None,
+) -> None:
+    expected = configured_columns(data) + (required_columns or [])
+    missing = [column for column in dict.fromkeys(expected) if column not in df.columns]
+    if missing:
+        formatted = ", ".join(repr(column) for column in missing)
+        raise ConfigError(f"Configured columns are missing from the dataframe: {formatted}")
+
+
 def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str | None]) -> pd.Series:
     try:
         return df[col].apply(clean_fn)
@@ -19,11 +40,11 @@ def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str | None]
         raise ConfigError(f"Error processing column: {col}: {e}")
 
 def combine_fields(fields: list[pd.Series], contact_type: str) -> pd.Series:
-    field_df = pd.concat(fields, axis=1)
-    def join_row(row: pd.Series) ->str:
-        vals = [v for v in row if pd.notna(v)]
-        return ''.join(vals) if vals else pd.NA # type: ignore
-    return field_df.apply(join_row, axis=1).rename(f"{contact_type}_combined")
+    field_df = pd.concat(fields, axis=1).astype("string")
+    field_df = field_df.apply(lambda column: column.str.strip())
+
+    combined = field_df.fillna("").agg("".join, axis=1)
+    return combined.mask(combined.eq("")).rename(f"{contact_type}_combined")
 
 # Step 3. Create the normalized columns provided by cleaning them and combining them into one column
 # Only creates rows when there is no null value for one of the fields being combined.
@@ -83,7 +104,10 @@ def normalize_contact_method(
         if getattr(data, contact_type).include_name:
 
             parts += [s[mask] for s in name_cache['names']]
-            joined_name = pd.concat(parts, axis=1).agg("|".join, axis=1)
+            joined_name = pd.concat(parts, axis=1).apply(
+                lambda row: "|".join(str(v) for v in row if pd.notna(v) and str(v).strip()),
+                axis=1,
+            )
 
             col = f'clean_{series.name}:name_{contact_type}'
             
@@ -99,7 +123,13 @@ def normalize_contact_method(
 
 
 # Step 1. Uncleaned Original Data Frame passed as well as the columns from the client yaml as data
-def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> pd.DataFrame:
+def normalize_df(
+    df: pd.DataFrame,
+    data: Columns,
+    contact_types: list[str],
+    required_columns: list[str] | None = None,
+) -> pd.DataFrame:
+    validate_input_columns(df, data, required_columns)
     
     # Build a cache of cleaned name columns to be attached to other contact cols if user choice
     name_cache ={}

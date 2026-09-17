@@ -150,7 +150,9 @@ uv run pytest
 ```
 
 Phase 1 establishes baseline coverage for configuration loading, CSV loading,
-cleaning, and normalization. The current suite has one documented expected
-failure for the next phase: `clean_name(pd.NA)` is currently converted to
-`"na"` instead of remaining missing. Missing-value preservation is addressed
-in Phase 2.
+cleaning, and normalization.
+
+Phase 2 now preserves missing values, validates configured input columns before
+normalization, validates matching bounds and weights, and reports actionable
+configuration errors. Empty and sparse input frames are covered by regression
+tests.

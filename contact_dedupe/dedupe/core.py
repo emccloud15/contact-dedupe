@@ -341,7 +341,20 @@ class Dedupe:
     def run(self) -> pd.DataFrame:
 
         # Normalize the dataframe when instance is created
-        self.main_df = normalize_df(df=self.original_df, data=self.client_cfg.COLUMNS, contact_types=self.contact_types)
+        required_columns = [
+            self.client_cfg.BLOCKING.column,
+            self.client_cfg.MATCH_FIELD,
+        ]
+        if self.nickname_col:
+            required_columns.append(self.nickname_col)
+        if self.exclusion_col:
+            required_columns.append(self.exclusion_col)
+        self.main_df = normalize_df(
+            df=self.original_df,
+            data=self.client_cfg.COLUMNS,
+            contact_types=self.contact_types,
+            required_columns=required_columns,
+        )
         self.dsu = DSU(len(self.main_df)) 
         
 
@@ -373,4 +386,3 @@ class Dedupe:
 
 
     
-
