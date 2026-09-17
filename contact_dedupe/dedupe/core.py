@@ -6,6 +6,7 @@ from typing import Optional
 import click
 import questionary
 import sys
+from typing import cast
 
 
 
@@ -16,6 +17,9 @@ from rapidfuzz import process, fuzz
 
 from .dsu import DSU
 from .normalize import normalize_df
+from .candidate_generator import CandidateGenerator
+from .evidence import EvidenceBuilder
+from .decision import DecisionEngine, PairDecision
 
 from contact_dedupe.common.exceptions import ConfigError
 from contact_dedupe.common.logger import get_logger
@@ -43,6 +47,11 @@ class Dedupe:
         self.exclusion_col = self.client_cfg.EXCLUSION.column if self.client_cfg.EXCLUSION else None
 
         self.original_df = df
+        self.main_df: pd.DataFrame = pd.DataFrame()
+        self.dsu: DSU | None = None
+        self.candidate_pairs: pd.DataFrame = pd.DataFrame()
+        self.match_evidence = []
+        self.pair_decisions: list[PairDecision] = []
         self.contact_types = [field for field,value in self.client_cfg.COLUMNS if value]
         self.strict_dedupe_cols = []
         self.fuzzy_dedupe_cols = []
@@ -119,9 +128,12 @@ class Dedupe:
         self.main_df.loc[mask,'dupe'] = True
 
     def _assign_match_id(self, group_df: pd.DataFrame) -> pd.DataFrame:
+        assert self.dsu is not None
         group_df['root'] = group_df.index.map(self.dsu.find)
         try:
-            group_df["match_id"] = group_df["root"].map(group_df[self.client_cfg.MATCH_FIELD])
+            root_values = cast(pd.Series, group_df["root"])
+            match_values = cast(pd.Series, group_df[self.client_cfg.MATCH_FIELD])
+            group_df["match_id"] = root_values.map(match_values)
         except KeyError:
             raise ConfigError(
                 f"{self.client_cfg.MATCH_FIELD} not found in csv file columns. Check MATCH_FIELD assignment in the client yaml."
@@ -143,6 +155,7 @@ class Dedupe:
             if len(pairs) < 1:
                 return
 
+        assert self.dsu is not None
         for i, j in pairs:
             self.dsu.union(block_df.index[i], block_df.index[j])
 
@@ -178,6 +191,7 @@ class Dedupe:
         df.loc[mask,"combined_cols"] = df.apply(lambda row: "|".join([row[col] for col in self.strict_dedupe_cols if row[f"{col}_dupe"] == True]), axis=1)
         
         # DSU to link multiple dupes to one root record
+        assert self.dsu is not None
         for idx_group in df.groupby("combined_cols").indices.values():
                 if len(idx_group) > 1:
                     label_indices = df.index[idx_group]
@@ -354,8 +368,17 @@ class Dedupe:
             data=self.client_cfg.COLUMNS,
             contact_types=self.contact_types,
             required_columns=required_columns,
+            record_id_source=self.match_field,
         )
-        self.dsu = DSU(len(self.main_df)) 
+        # Keep all legacy matching operations position-based while exposing
+        # candidate generation independently through stable record IDs.
+        self.main_df = self.main_df.reset_index(drop=True)
+        self.candidate_pairs = CandidateGenerator.from_config(self.client_cfg).generate(self.main_df)
+        self.match_evidence = EvidenceBuilder(self.client_cfg).build_all(
+            self.main_df, self.candidate_pairs
+        )
+        self.pair_decisions = DecisionEngine(self.client_cfg).decide_all(self.match_evidence)
+        self.dsu = DSU(len(self.main_df))
         
 
         # We only dedupe on these columns - the normalized columns chosen by client in yaml

@@ -156,3 +156,18 @@ Phase 2 now preserves missing values, validates configured input columns before
 normalization, validates matching bounds and weights, and reports actionable
 configuration errors. Empty and sparse input frames are covered by regression
 tests.
+
+Phases 3–5 add stable internal record IDs and standalone candidate generation
+with exact, prefix, and composite blocks. Candidate pairs expose the block
+strategies that produced them, while null keys and oversized buckets are
+excluded.
+
+Phase 6 adds `EvidenceBuilder`, which compares every generated candidate using
+field-level scores, exact-match flags, missing-field tracking, strong-contact
+conflicts, nickname-aware name matching, weighted aggregate scores, and
+candidate-block provenance. Matching decisions remain the next phase’s scope.
+
+Phase 7 adds versioned matching profiles and finite, validated rules for
+`AUTO_MERGE`, `REVIEW`, `NOT_DUPLICATE`, and `INSUFFICIENT_DATA` decisions.
+Strong email or phone conflicts always prevent automatic merging and produce an
+explainable review reason.

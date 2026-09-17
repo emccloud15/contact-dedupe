@@ -17,6 +17,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.390",
     "pytest>=8.0",
 ]
 
@@ -29,3 +30,10 @@ where = ["."]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 python_files = ["test_*.py", "*_test.py", "tests.py"]
+
+[tool.pyright]
+include = ["contact_dedupe"]
+exclude = ["**/__pycache__"]
+pythonVersion = "3.14"
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false

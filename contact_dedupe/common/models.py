@@ -52,6 +52,90 @@ class Blocking(BaseModel):
             raise ValueError("blocking type and column must be non-empty")
         return value
 
+
+class CandidateBlock(BaseModel):
+    type: str
+    field: Optional[str] = None
+    fields: list[str] = Field(default_factory=list)
+    length: Optional[int] = None
+    direction: str = "start"
+    max_bucket_size: int = 1000
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, value: str) -> str:
+        value = value.lower().strip()
+        if value not in {"exact", "prefix", "composite"}:
+            raise ValueError("candidate block type must be exact, prefix, or composite")
+        return value
+
+    @field_validator("field")
+    @classmethod
+    def validate_field(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("candidate block field must be a non-empty string")
+        return value
+
+    @field_validator("fields")
+    @classmethod
+    def validate_fields(cls, values: list[str]) -> list[str]:
+        if any(not value.strip() for value in values) or len(values) != len(set(values)):
+            raise ValueError("candidate block fields must be non-empty and unique")
+        return values
+
+    @field_validator("length")
+    @classmethod
+    def validate_length(cls, value: Optional[int]) -> Optional[int]:
+        if value is not None and value < 1:
+            raise ValueError("candidate prefix length must be positive")
+        return value
+
+    @field_validator("direction")
+    @classmethod
+    def validate_direction(cls, value: str) -> str:
+        value = value.lower().strip()
+        if value not in {"start", "end"}:
+            raise ValueError("candidate prefix direction must be start or end")
+        return value
+
+    @field_validator("max_bucket_size")
+    @classmethod
+    def validate_bucket_size(cls, value: int) -> int:
+        if value < 2:
+            raise ValueError("candidate max_bucket_size must be at least 2")
+        return value
+
+    @model_validator(mode="after")
+    def validate_shape(self):
+        if self.type in {"exact", "prefix"} and not self.field:
+            raise ValueError(f"{self.type} candidate blocks require field")
+        if self.type == "composite" and len(self.fields) < 2:
+            raise ValueError("composite candidate blocks require at least two fields")
+        if self.type == "prefix" and self.length is None:
+            raise ValueError("prefix candidate blocks require length")
+        return self
+
+
+class MatchingProfile(BaseModel):
+    auto_merge_rules: list[str] = Field(default_factory=list)
+    review_rules: list[str] = Field(default_factory=list)
+
+    @field_validator("auto_merge_rules", "review_rules")
+    @classmethod
+    def validate_rule_names(cls, values: list[str]) -> list[str]:
+        supported = {
+            "email_exact",
+            "phone_exact",
+            "email_exact_and_phone_exact",
+            "phone_exact_and_name_high",
+            "name_high_and_address_high",
+        }
+        unsupported = sorted(set(values) - supported)
+        if unsupported:
+            raise ValueError(f"unsupported matching rule(s): {', '.join(unsupported)}")
+        return values
+
+
 class Exclusion(BaseModel):
     column: str
 
@@ -78,6 +162,9 @@ class ClientConfig(BaseModel):
     BASE: Optional[bool] = False
     COLUMNS: Columns
     BLOCKING: Blocking
+    CANDIDATE_BLOCKS: Optional[list[CandidateBlock]] = None
+    MATCHING_PROFILE: str = "legacy_v1"
+    MATCHING_PROFILES: dict[str, MatchingProfile] = Field(default_factory=dict)
     EXCLUSION: Optional[Exclusion] = None
     MAIN_MATCH_CRITERIA: str
     MATCH_FIELD: str
@@ -92,6 +179,21 @@ class ClientConfig(BaseModel):
         if not value.strip():
             raise ValueError("required configuration values must be non-empty strings")
         return value
+
+    @field_validator("MATCHING_PROFILE")
+    @classmethod
+    def validate_profile_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("MATCHING_PROFILE must be a non-empty string")
+        return value
+
+    @model_validator(mode="after")
+    def validate_selected_profile(self):
+        if self.MATCHING_PROFILES and self.MATCHING_PROFILE not in self.MATCHING_PROFILES:
+            raise ConfigError(
+                f"MATCHING_PROFILE {self.MATCHING_PROFILE!r} is not defined in MATCHING_PROFILES"
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_main_match_criteria(self) -> ClientConfig:

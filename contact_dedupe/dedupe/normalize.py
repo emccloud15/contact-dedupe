@@ -1,11 +1,14 @@
 import pandas as pd
-from typing import Callable
+from typing import Callable, cast
 import click
 
-from .cleaning import clean_name, clean_email, clean_phone, clean_address
+from .cleaning import ScalarValue, clean_name, clean_email, clean_phone, clean_address
 
 from contact_dedupe.common.models import Columns
 from contact_dedupe.common.exceptions import ConfigError
+
+
+RECORD_ID_COLUMN = "_record_id"
 
 
 
@@ -31,9 +34,32 @@ def validate_input_columns(
         raise ConfigError(f"Configured columns are missing from the dataframe: {formatted}")
 
 
-def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str | None]) -> pd.Series:
+def add_record_ids(
+    df: pd.DataFrame,
+    source_column: str | None = None,
+) -> pd.DataFrame:
+    """Add deterministic IDs without relying on dataframe index labels."""
+    result = df.copy()
+    if RECORD_ID_COLUMN in result.columns:
+        raise ConfigError(f"{RECORD_ID_COLUMN!r} is reserved for internal record identity")
+
+    if source_column and source_column in result.columns:
+        source = result[source_column]
+        if cast(bool, source.notna().all()) and not cast(bool, source.duplicated().any()):
+            result[RECORD_ID_COLUMN] = cast(pd.Series, source.map(lambda value: f"record:{value}"))
+            return result
+
+    result[RECORD_ID_COLUMN] = [f"record:{position}" for position in range(len(result))]
+    return result
+
+
+def safe_apply(
+    df: pd.DataFrame,
+    col: str,
+    clean_fn: Callable[[ScalarValue], str | None],
+) -> pd.Series:
     try:
-        return df[col].apply(clean_fn)
+        return cast(pd.Series, df[col].apply(clean_fn))
     except KeyError:
         raise ConfigError(f"Column name is not in the dataframe: {col}")
     except Exception as e:
@@ -43,8 +69,10 @@ def combine_fields(fields: list[pd.Series], contact_type: str) -> pd.Series:
     field_df = pd.concat(fields, axis=1).astype("string")
     field_df = field_df.apply(lambda column: column.str.strip())
 
-    combined = field_df.fillna("").agg("".join, axis=1)
-    return combined.mask(combined.eq("")).rename(f"{contact_type}_combined")
+    combined = cast(pd.Series, field_df.fillna("").agg("".join, axis=1))
+    combined = cast(pd.Series, combined.mask(combined.eq("")))
+    combined.name = f"{contact_type}_combined"
+    return combined
 
 # Step 3. Create the normalized columns provided by cleaning them and combining them into one column
 # Only creates rows when there is no null value for one of the fields being combined.
@@ -54,7 +82,7 @@ def normalize_contact_method(
     df: pd.DataFrame,
     data: Columns,
     contact_type: str,
-    name_cache: dict
+    name_cache: dict[str, list[pd.Series]]
 ) -> pd.DataFrame:
     
     df = df.copy()
@@ -104,7 +132,7 @@ def normalize_contact_method(
         if getattr(data, contact_type).include_name:
 
             parts += [s[mask] for s in name_cache['names']]
-            joined_name = pd.concat(parts, axis=1).apply(
+            joined_name = pd.concat(cast(list[pd.Series], parts), axis=1).apply(
                 lambda row: "|".join(str(v) for v in row if pd.notna(v) and str(v).strip()),
                 axis=1,
             )
@@ -118,7 +146,7 @@ def normalize_contact_method(
         df[col] = pd.NA
         df.loc[mask, col] = series
 
-    return df[[c for c in df.columns if c.startswith("clean_")]]
+    return df.loc[:, [c for c in df.columns if c.startswith("clean_")]].copy()
 
 
 
@@ -128,11 +156,12 @@ def normalize_df(
     data: Columns,
     contact_types: list[str],
     required_columns: list[str] | None = None,
+    record_id_source: str | None = None,
 ) -> pd.DataFrame:
     validate_input_columns(df, data, required_columns)
     
     # Build a cache of cleaned name columns to be attached to other contact cols if user choice
-    name_cache ={}
+    name_cache: dict[str, list[pd.Series]] = {}
     if data.name:
         name_cols = [value for value in data.name.columns if data.name.columns]
         combine_name_cols = [value for value in data.name.combine if data.name.combine]
@@ -144,7 +173,7 @@ def normalize_df(
 
     with click.progressbar(contact_types, label='cleaning data') as bar:
         # Passing every contact type and their respective yaml column data except name.
-        final_cleaned_dfs = [
+        final_cleaned_dfs: list[pd.DataFrame] = [
             normalize_contact_method(df=df, data=data, contact_type=ct, name_cache=name_cache)
             for ct in bar if ct != 'name']
         if data.name:
@@ -159,4 +188,5 @@ def normalize_df(
             final_cleaned_dfs.append(name_dfs)
     
         
-    return df.join(final_cleaned_dfs) # type: ignore
+    normalized = cast(pd.DataFrame, df.join(final_cleaned_dfs))
+    return add_record_ids(normalized, source_column=record_id_source)

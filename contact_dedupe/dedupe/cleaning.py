@@ -1,30 +1,33 @@
 import re
-from typing import Optional
+from typing import Optional, cast
 
 import pandas as pd
 
 
-def _is_missing(value: str | int | float) -> bool:
+ScalarValue = str | int | float | None
+
+
+def _is_missing(value: ScalarValue) -> bool:
     """Return whether a scalar value is null or contains only whitespace."""
-    if value is None or pd.isna(value):
+    if value is None or cast(bool, pd.isna(value)):
         return True
     return isinstance(value, str) and not value.strip()
 
 
-def clean_name(n: str) -> Optional[str]:
+def clean_name(n: ScalarValue) -> Optional[str]:
     if _is_missing(n):
         return None
     cleaned = re.sub(r"[^a-zA-Z]", "", str(n)).lower()
     return cleaned or None
 
 
-def clean_email(e: str) -> Optional[str]:
-    if pd.isna(e) or isinstance(e, str) and not e.strip():
+def clean_email(e: ScalarValue) -> Optional[str]:
+    if _is_missing(e):
         return None
-    return e.strip().lower().replace(" ", "")
+    return str(e).strip().lower().replace(" ", "")
 
 
-def clean_phone(p: str | int | float) -> Optional[str]:
+def clean_phone(p: ScalarValue) -> Optional[str]:
     if _is_missing(p):
         return None
 
@@ -34,7 +37,7 @@ def clean_phone(p: str | int | float) -> Optional[str]:
     return cleaned or None
 
 
-def clean_address(a: str) -> Optional[str]:
+def clean_address(a: ScalarValue) -> Optional[str]:
     if _is_missing(a):
         return None
     
