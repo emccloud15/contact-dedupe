@@ -277,19 +277,169 @@ profile_version
 run_timestamp
 ```
 
-## Refactor sequence
+## Numbered implementation phases
 
-1. Complete the test baseline and add regression tests for current cleaning, normalization, configuration, and dedupe behavior.
-2. Fix normalization correctness issues, beginning with missing-value handling.
-3. Introduce stable record IDs and remove algorithmic dependence on dataframe indexes.
-4. Extract candidate generation from the current `Dedupe` implementation while retaining current comparison behavior.
-5. Add multiple blocking strategies and candidate-pair provenance.
-6. Extract field comparators and evidence objects from the matrix-scoring code.
-7. Add the versioned decision-profile model and decision engine.
-8. Extract duplicate grouping and add safeguards for transitive and conflicting groups.
-9. Replace the current output formatter with the review, group, and summary outputs.
-10. Update downstream programs to construct the new `ClientConfig` and consume the new results.
-11. Add labeled test fixtures and measure candidate recall, auto-merge precision, and review volume for each profile.
+Each phase should be implemented and tested independently. A future session can be started with: `Implement phase N from PLAN.md`.
+
+### Phase 1: Establish the test baseline
+
+Scope:
+
+- Make the test suite collect using the current public API.
+- Add baseline tests for configuration loading, CSV loading, cleaning, and normalization.
+- Record known failures without changing production behavior unless required to make the test harness run.
+
+Done when:
+
+- Tests run with one documented command.
+- Existing behavior is covered by representative fixtures.
+- Intentional failures are clearly identified as the next implementation targets.
+
+### Phase 2: Correct normalization and input validation
+
+Scope:
+
+- Preserve missing values during all cleaning operations.
+- Validate configured dataframe columns before processing.
+- Validate configuration fields, thresholds, weights, and required matching fields.
+- Add tests for empty, null, malformed, and sparse input data.
+
+Done when:
+
+- Missing values cannot become matchable strings.
+- Invalid client configurations fail with actionable errors.
+- Normalized output is deterministic and independently tested.
+
+### Phase 3: Introduce stable record identity
+
+Scope:
+
+- Add an internal stable record ID for every input row.
+- Remove DSU and grouping assumptions about dataframe indexes.
+- Preserve the configured client match field separately from the internal ID.
+- Add tests for non-contiguous, duplicated, and reordered dataframe indexes.
+
+Done when:
+
+- Matching and grouping produce the same result regardless of dataframe index labels.
+- Every output relationship can be traced back to source records.
+
+### Phase 4: Extract candidate generation
+
+Scope:
+
+- Create a candidate-generation component separate from final comparison.
+- Retain the current blocking behavior as a `legacy_v1` candidate strategy.
+- Return unique candidate pairs with their source block names.
+- Add tests proving that candidate generation does not itself classify duplicates.
+
+Done when:
+
+- Candidate generation can be run and inspected independently.
+- The existing `Dedupe(client_cfg, df).run()` input API still works.
+
+### Phase 5: Add multiple blocking strategies
+
+Scope:
+
+- Support exact, prefix, and composite blocks over normalized fields.
+- Union and deduplicate pairs produced by different blocks.
+- Ignore null keys and protect against oversized/common-value buckets.
+- Record candidate-generation provenance.
+- Add tests for duplicates found only by different blocking passes.
+
+Done when:
+
+- A pair can be compared if it shares any configured blocking strategy.
+- Candidate recall is measurable on labeled fixtures.
+
+### Phase 6: Extract comparison and evidence generation
+
+Scope:
+
+- Extract field comparators from the current matrix-scoring implementation.
+- Produce explicit field-level evidence for each candidate pair.
+- Preserve exact, fuzzy, missing-field, conflict, and nickname evidence.
+- Keep vectorized or matrix operations only as internal performance optimizations where useful.
+- Add tests for each comparator and evidence aggregation behavior.
+
+Done when:
+
+- Pair comparison is independent of blocking and decision policy.
+- Each comparison exposes which fields were available and how they contributed.
+
+### Phase 7: Add versioned matching profiles and gating
+
+Scope:
+
+- Add named, versioned matching profiles to `ClientConfig`.
+- Define validated predicates and rules for strict, balanced, and permissive behavior.
+- Implement pair decisions: `AUTO_MERGE`, `REVIEW`, `NOT_DUPLICATE`, and `INSUFFICIENT_DATA`.
+- Add reason codes and matched-rule information.
+- Preserve current policy as `legacy_v1` where practical.
+
+Done when:
+
+- Changing the profile changes policy without duplicating the comparison engine.
+- Every decision is explainable and covered by profile-specific tests.
+
+### Phase 8: Extract duplicate grouping
+
+Scope:
+
+- Build groups from pair-level decisions after comparison.
+- Add safeguards for transitive chains and conflicting strong identifiers.
+- Preserve pair evidence within or alongside each group.
+- Add tests for A-B-C chains, conflicting identifiers, and ambiguous groups.
+
+Done when:
+
+- Pair decisions and group decisions are separately inspectable.
+- Weak transitive relationships cannot silently produce unsafe automatic merges.
+
+### Phase 9: Replace result formatting and output artifacts
+
+Scope:
+
+- Produce a client-facing pair review file.
+- Produce a duplicate-group summary file.
+- Produce run metadata containing profile, counts, and timestamps.
+- Keep internal normalized/helper fields out of the primary output unless requested.
+- Add output schema and snapshot tests.
+
+Done when:
+
+- Clients can review decisions using original values, scores, conflicts, and reasons.
+- Runs are reproducible from recorded configuration and profile versions.
+
+### Phase 10: Migrate downstream callers and CLI behavior
+
+Scope:
+
+- Update downstream programs to construct the new `ClientConfig`.
+- Standardize CLI options and directory/file input behavior.
+- Add preflight validation and candidate/decision counts.
+- Document the new YAML and output contracts.
+- Add CLI integration tests.
+
+Done when:
+
+- Existing callers have migrated to the new configuration model.
+- A client can run the tool without relying on internal implementation details.
+
+### Phase 11: Calibrate and evaluate profiles
+
+Scope:
+
+- Build labeled fixtures for each client or client class.
+- Measure candidate recall, pair precision/recall, automatic-merge precision, review rate, and group-level false merges.
+- Tune profiles using held-out examples rather than only hand-selected cases.
+- Version profiles whenever policy changes.
+
+Done when:
+
+- Each production profile has documented evaluation results.
+- Automatic merging is enabled only where its measured precision is acceptable.
 
 ## Testing strategy
 
