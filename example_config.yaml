@@ -1,0 +1,91 @@
+# Copy this file and replace the example CSV column names with your own.
+# All names under COLUMNS, BLOCKING, MATCH_FIELD, NICKNAME, and EXCLUSION
+# must exist in the input CSV.
+
+CLIENT_NAME: acme_contacts
+
+COLUMNS:
+  name:
+    include_name: false
+    weight:
+      - [First Name, 0.15]
+      - [Last Name, 0.15]
+    columns:
+      - First Name
+      - Last Name
+
+  email:
+    include_name: false
+    weight: 0.25
+    columns:
+      - Email
+      - Alternate Email
+
+  phone:
+    include_name: false
+    weight: 0.20
+    columns:
+      - Phone
+      - Mobile Phone
+
+  address:
+    include_name: false
+    weight: 0.25
+    # Address columns are cleaned individually and compared as address fields.
+    columns:
+      - Street
+      - City
+      - State
+      - ZIP
+
+# The older BLOCKING section remains required for compatibility. New runs
+# should normally use CANDIDATE_BLOCKS for multiple blocking strategies.
+BLOCKING:
+  strict: false
+  type: zipcode
+  column: ZIP
+  portion: start
+
+CANDIDATE_BLOCKS:
+  - type: exact
+    field: email
+    max_bucket_size: 500
+  - type: exact
+    field: phone
+    max_bucket_size: 500
+  - type: prefix
+    field: postal_code
+    length: 3
+    direction: start
+    max_bucket_size: 1000
+  - type: composite
+    fields: [last_name, postal_code]
+    max_bucket_size: 500
+
+MATCHING_PROFILE: balanced_v1
+
+# You can define client-specific profiles using only the supported rule names:
+# email_exact, phone_exact, email_exact_and_phone_exact,
+# phone_exact_and_name_high, name_high_and_address_high.
+MATCHING_PROFILES:
+  balanced_v1:
+    auto_merge_rules:
+      - email_exact
+      - phone_exact_and_name_high
+    review_rules:
+      - name_high_and_address_high
+
+MAIN_MATCH_CRITERIA: Email
+MATCH_FIELD: Contact ID
+NICKNAME: First Name
+
+BOUNDS:
+  u_bound: 90
+  l_bound: 75
+
+# Optional controls.
+EXCLUSION:
+  column: Account ID
+ADDRESS: false
+STRICT_MATCH: false
+BASE: false

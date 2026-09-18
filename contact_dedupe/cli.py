@@ -23,6 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--yaml", type=CleanPath(exists=True), help="Path to the YAML config file")
     parser.add_argument("--file", type=CleanPath(exists=True), help="Path to the CSV file to be deduped")
     parser.add_argument("--output", type=CleanPath(), help="Path to the output directory for the deduped CSV file")
+    parser.add_argument("--dir", dest="input_dir", type=CleanPath(), help="Directory containing one YAML and one CSV")
     return parser
 
 def choose_file_or_directory(prompt: str, type: str) -> Path:
@@ -60,19 +61,23 @@ def choose_file_or_directory(prompt: str, type: str) -> Path:
 def main(argv: list[str] | None = None):
     args = build_parser().parse_args(argv)
     try:
-        yaml_file = Path(args.yaml) or choose_file_or_directory("Select the YAML config file", "file")
-        dupe_file = Path(args.file) or choose_file_or_directory("Select the CSV file to be deduped", "file")
-        output_dir = Path(args.output) or choose_file_or_directory("Select the output directory", "directory")
+        if args.input_dir:
+            yaml_file, dupe_file = Utilities.load_data_from_dir(Path(args.input_dir))
+        else:
+            yaml_file = Path(args.yaml) if args.yaml else choose_file_or_directory("Select the YAML config file", "file")
+            dupe_file = Path(args.file) if args.file else choose_file_or_directory("Select the CSV file to be deduped", "file")
+        output_dir = Path(args.output) if args.output else choose_file_or_directory("Select the output directory", "directory")
         client_config = Utilities.load_client_config(yaml_file)
         dupe_df = Utilities.load_data_df(dupe_file)
         output_path = output_dir / f"Output_{client_config.CLIENT_NAME}_{datetime.today().date()}"
-        output_path.mkdir(parents=True, exist_ok=True)
-        
-
         main_df = Dedupe(client_cfg=client_config, df=dupe_df)
-        final_df = main_df.run()
-        final_df.to_csv(output_path / f"master_dedupe_{datetime.today().date()}.csv", index=False)
-            
+        main_df.run()
+        artifacts = main_df.write_outputs(str(output_path))
+        click.echo("Dedupe complete")
+        group_count = len(main_df.grouping.groups) if main_df.grouping is not None else 0
+        click.echo(f"Candidates: {len(main_df.candidate_pairs)}; groups: {group_count}")
+        for artifact in artifacts.values():
+            click.echo(str(artifact))
 
         logger.info("Dedupe complete")
 
