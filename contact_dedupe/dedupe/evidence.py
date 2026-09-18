@@ -81,10 +81,10 @@ class EvidenceBuilder:
         return float(config.weight)
 
     def _build_pair_from_rows(
-        self, rows: pd.DataFrame, comparison_columns: list[str], left_id: str,
-        right_id: str, candidate_blocks: tuple[str, ...] = (),
+        self, rows: pd.DataFrame, comparison_columns: list[str], left_id: object,
+        right_id: object, candidate_blocks: tuple[str, ...] = (),
     ) -> MatchEvidence:
-        left = rows.loc[left_id]
+        left = rows.loc[left_id] 
         right = rows.loc[right_id]
         fields: dict[str, FieldEvidence] = {}
         matched: list[str] = []
@@ -116,7 +116,7 @@ class EvidenceBuilder:
             weight = self._field_weight(column)
             weighted_score += score * weight
             active_weight += weight
-            
+
         return MatchEvidence(
             left_id=left_id,
             right_id=right_id,
