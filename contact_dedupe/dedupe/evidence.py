@@ -40,6 +40,7 @@ class EvidenceBuilder:
     def __init__(self, client_cfg: ClientConfig | None = None):
         self.client_cfg = client_cfg
         self.nickname_finder = NickNamer()
+        self._nickname_cache: dict[str, set[str]] = {}
 
     @staticmethod
     def _available(value: object) -> bool:
@@ -56,10 +57,12 @@ class EvidenceBuilder:
     def _is_nickname_match(self, left: object, right: object) -> bool:
         left_name = str(left).lower()
         right_name = str(right).lower()
+        if left_name not in self._nickname_cache:
+            self._nickname_cache[left_name] = set(self.nickname_finder.nicknames_of(left_name)) | {left_name}
+        if right_name not in self._nickname_cache:
+            self._nickname_cache[right_name] = set(self.nickname_finder.nicknames_of(right_name)) | {right_name}
         return bool(
-            {left_name, right_name}
-            & set(self.nickname_finder.nicknames_of(left_name))
-            and right_name in set(self.nickname_finder.nicknames_of(left_name))
+            self._nickname_cache[left_name] & self._nickname_cache[right_name]
         )
 
     def _field_weight(self, column: str) -> float:
@@ -77,14 +80,10 @@ class EvidenceBuilder:
             return 0.0
         return float(config.weight)
 
-    def build_pair(
-        self,
-        normalized: pd.DataFrame,
-        left_id: object,
-        right_id: object,
-        candidate_blocks: tuple[str, ...] = (),
+    def _build_pair_from_rows(
+        self, rows: pd.DataFrame, comparison_columns: list[str], left_id: str,
+        right_id: str, candidate_blocks: tuple[str, ...] = (),
     ) -> MatchEvidence:
-        rows = normalized.set_index(RECORD_ID_COLUMN, drop=False)
         left = rows.loc[left_id]
         right = rows.loc[right_id]
         fields: dict[str, FieldEvidence] = {}
@@ -95,10 +94,6 @@ class EvidenceBuilder:
         weighted_score = 0.0
         active_weight = 0.0
 
-        comparison_columns = [
-            column for column in normalized.columns
-            if column.startswith("clean_") and ":" in column
-        ]
         for column in comparison_columns:
             left_value, right_value = left[column], right[column]
             available = self._available(left_value) and self._available(right_value)
@@ -121,7 +116,7 @@ class EvidenceBuilder:
             weight = self._field_weight(column)
             weighted_score += score * weight
             active_weight += weight
-
+            
         return MatchEvidence(
             left_id=left_id,
             right_id=right_id,
@@ -134,14 +129,33 @@ class EvidenceBuilder:
             match_score=(weighted_score / active_weight) if active_weight else None,
         )
 
+    def build_pair(
+        self,
+        normalized: pd.DataFrame,
+        left_id: object,
+        right_id: object,
+        candidate_blocks: tuple[str, ...] = (),
+    ) -> MatchEvidence:
+        rows = normalized.set_index(RECORD_ID_COLUMN, drop=False)
+        comparison_columns = [
+            column for column in normalized.columns
+            if column.startswith("clean_") and ":" in column
+        ]
+        return self._build_pair_from_rows(rows, comparison_columns, left_id, right_id, candidate_blocks)
+
     def build_all(
         self,
         normalized: pd.DataFrame,
         candidates: pd.DataFrame,
     ) -> list[MatchEvidence]:
+        rows = normalized.set_index(RECORD_ID_COLUMN, drop=False)
+        comparison_columns = [
+            column for column in normalized.columns
+            if column.startswith("clean_") and ":" in column
+        ]
         return [
-            self.build_pair(
-                normalized,
+            self._build_pair_from_rows(
+                rows, comparison_columns,
                 row["left_record_id"],
                 row["right_record_id"],
                 tuple(row["candidate_blocks"]),

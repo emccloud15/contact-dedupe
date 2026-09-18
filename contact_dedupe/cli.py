@@ -64,6 +64,7 @@ def main(argv: list[str] | None = None):
         if args.input_dir:
             yaml_file, dupe_file = Utilities.load_data_from_dir(Path(args.input_dir))
         else:
+            print("This is the new version")
             yaml_file = Path(args.yaml) if args.yaml else choose_file_or_directory("Select the YAML config file", "file")
             dupe_file = Path(args.file) if args.file else choose_file_or_directory("Select the CSV file to be deduped", "file")
         output_dir = Path(args.output) if args.output else choose_file_or_directory("Select the output directory", "directory")

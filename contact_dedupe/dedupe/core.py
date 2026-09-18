@@ -38,9 +38,11 @@ class Dedupe:
             required_columns=required, record_id_source=self.client_cfg.MATCH_FIELD,
         )
         self.candidate_pairs = CandidateGenerator.from_config(self.client_cfg).generate(self.main_df)
+        print(f"Generated {len(self.candidate_pairs)} candidate pairs from {len(self.main_df)} records")
         self.match_evidence = EvidenceBuilder(self.client_cfg).build_all(
             self.main_df, self.candidate_pairs
         )
+        print(f"Generated match evidence for {len(self.match_evidence)} candidate pairs")
         self.pair_decisions = DecisionEngine(self.client_cfg).decide_all(self.match_evidence)
         self.grouping = DuplicateGrouper().build_groups(self.pair_decisions)
         self.result = ResultWriter(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from itertools import combinations
 import re
 from typing import Iterator, cast
 
@@ -50,6 +51,7 @@ class CandidateGenerator:
         normalized = field.lower().replace(" ", "_")
         matches = [
             column for column in df.columns
+
             if column.lower().replace(" ", "_").startswith(f"clean_{normalized}")
         ]
         if matches:
@@ -112,23 +114,24 @@ class CandidateGenerator:
             )
 
         pairs: dict[tuple[object, object], set[str]] = defaultdict(set)
+        record_ids = df[self.record_id_column].to_numpy()
         for block in self.blocks:
             for block_name, keys in self._keys_for_block(df, block):
                 buckets: dict[str, list[int]] = defaultdict(list)
+
                 for position, key in enumerate(keys.tolist()):
                     if self._usable(key):
                         buckets[str(key)].append(position)
-
                 for positions in buckets.values():
                     if len(positions) > block.max_bucket_size:
                         continue
-                    for left_position, left in enumerate(positions[:-1]):
-                        for right in positions[left_position + 1:]:
-                            left_id = df.iloc[left][self.record_id_column]
-                            right_id = df.iloc[right][self.record_id_column]
-                            pair = tuple(sorted((left_id, right_id), key=str))
-                            pairs[pair].add(block_name)
+                    if len(positions) < 2:
+                        continue
 
+                    bucket_ids = record_ids[positions]
+                    for left_id, right_id in combinations(bucket_ids, 2):
+                        pair = (left_id, right_id) if str(left_id) < str(right_id) else (right_id, left_id)
+                        pairs[pair].add(block_name) 
         rows = [
             {
                 "left_record_id": left,

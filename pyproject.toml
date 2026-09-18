@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.13.4",
     "pyyaml>=6.0.3",
     "questionary>=2.1.1",
+
     "rapidfuzz>=3.14.5",
 ]
 
@@ -26,6 +27,8 @@ contact-dedupe = "contact_dedupe.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
+include = ["contact_dedupe*"]
+exclude = ["build*", "dist*", "tests*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

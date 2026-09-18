@@ -175,7 +175,7 @@ def normalize_df(
 
     with click.progressbar(contact_types, label='cleaning data') as bar:
         # Passing every contact type and their respective yaml column data except name.
-        final_cleaned_dfs: list[pd.DataFrame | pd.Series[Any]] = [
+        final_cleaned_dfs: list[pd.DataFrame] = [
             normalize_contact_method(df=df, data=data, contact_type=ct, name_cache=name_cache)
             for ct in bar if ct != 'name']
         if data.name:
