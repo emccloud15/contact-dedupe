@@ -1,5 +1,5 @@
 import pandas as pd
-from typing import Callable, cast
+from typing import Callable, cast, Any
 import click
 
 from .cleaning import ScalarValue, clean_name, clean_email, clean_phone, clean_address
@@ -19,6 +19,7 @@ def configured_columns(data: Columns) -> list[str]:
         if field_config is not None:
             columns.extend(field_config.columns)
             columns.extend(field_config.combine)
+    # Remove duplicates while preserving order. Duplicates can occur if a column is listed in both the columns and combine fields in the yaml.
     return list(dict.fromkeys(columns))
 
 
@@ -27,6 +28,7 @@ def validate_input_columns(
     data: Columns,
     required_columns: list[str] | None = None,
 ) -> None:
+    # Required columns passed are one or all of the coulmns set for MATCH_FIELD, BLOCKING, NICKNAME, EXCLUSION
     expected = configured_columns(data) + (required_columns or [])
     missing = [column for column in dict.fromkeys(expected) if column not in df.columns]
     if missing:
@@ -173,7 +175,7 @@ def normalize_df(
 
     with click.progressbar(contact_types, label='cleaning data') as bar:
         # Passing every contact type and their respective yaml column data except name.
-        final_cleaned_dfs: list[pd.DataFrame] = [
+        final_cleaned_dfs: list[pd.DataFrame | pd.Series[Any]] = [
             normalize_contact_method(df=df, data=data, contact_type=ct, name_cache=name_cache)
             for ct in bar if ct != 'name']
         if data.name:
