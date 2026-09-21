@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections import defaultdict
 from itertools import combinations
 import re
-from typing import Iterator, Any
-import click
+from typing import Any, Iterator
 
+import click
 import pandas as pd
 
 from contact_dedupe.common.exceptions import ConfigError
@@ -16,12 +16,11 @@ from .normalize import RECORD_ID_COLUMN
 
 
 class BlockGenerator:
-    """Generate blocks for record comparison"""
-        
+    """Generate blocking keys for record comparison."""
+
     @staticmethod
     def _usable(series: pd.Series) -> pd.Series[bool]:
         return series.notna() & (series.astype(str).str.strip() != "")
-        
 
     @staticmethod
     def _columns_for_fields(df: pd.DataFrame, field: str) -> list[str]:
@@ -35,7 +34,7 @@ class BlockGenerator:
         normalized = field.lower().replace(" ", "_")
         matches = [
             column for column in df.columns
-
+            if column.lower().replace(" ", "_").startswith(f"clean_{normalized}")
             if column.lower().replace(" ", "_").startswith(f"clean_{normalized}")
         ]
         if matches:
@@ -54,28 +53,24 @@ class BlockGenerator:
         raise ConfigError(f"Candidate block field {field!r} is not in the normalized dataframe")
 
     @staticmethod
-    def _preifx(series: pd.Series, length: int, direction: str) -> pd.Series:
+    def _prefix(series: pd.Series, length: int, direction: str) -> pd.Series:
         if direction == "start":
             return series.astype(str).str[:length]
-        else:
-            return series.astype(str).str[-length:]
+        return series.astype(str).str[-length:]
 
     @staticmethod
     def _composite(df: pd.DataFrame, columns: list[str], mask: pd.Series) -> pd.Series:
         filtered_df = df.loc[mask, columns]
         cleaned_df = filtered_df.astype(str).apply(lambda col: col.str.strip())
-
-
         first_col = cleaned_df[columns[0]]
         other_cols = cleaned_df[columns[1:]]
-
         joined_series = first_col.str.cat(other_cols, sep="|")
-
         return joined_series.reindex(df.index, fill_value=None)
 
     @classmethod
-    def generate(cls, df: pd.DataFrame, block_config: CandidateBlock) -> Iterator[tuple[str,pd.Series]]:
-
+    def generate(
+        cls, df: pd.DataFrame, block_config: CandidateBlock
+    ) -> Iterator[tuple[str, pd.Series]]:
         if block_config.type in {"exact", "prefix"}:
             assert block_config.field
             source_columns = cls._columns_for_fields(df, block_config.field)
@@ -84,26 +79,30 @@ class BlockGenerator:
                 block_name = f"{block_config.type}:{block_config.field}:{column}"
                 values: pd.Series = df[column]
 
-                if block_config.type == 'prefix':
+                if block_config.type == "prefix":
                     length = block_config.length
                     if length is None:
                         raise ValueError("prefix candidate block length is required")
-                    yield block_name, cls._preifx(series=values, length=length, direction=block_config.direction).where(cls._usable(values), None)
+                    keys = cls._prefix(
+                        series=values,
+                        length=length,
+                        direction=block_config.direction,
+                    )
+                    yield block_name, keys.where(cls._usable(values), None)
                 else:
-                    # Not prefix then exact -> just returns the entire value as the block key
                     yield block_name, values.where(cls._usable(values), None)
-                
-        elif block_config.type == 'composite':
+
+        elif block_config.type == "composite":
             block_name = f"composite:{'+'.join(block_config.fields)}"
             assert block_config.fields
             source_columns = [
-                cls._columns_for_fields(df, field)[0] for field in block_config.fields  
+                cls._columns_for_fields(df, field)[0]
+                for field in block_config.fields
             ]
             valid_mask = df[source_columns].apply(cls._usable).all(axis=1)
             yield block_name, cls._composite(df=df, columns=source_columns, mask=valid_mask)
         else:
             raise ValueError(f"Unsupported block type {block_config.type}")
-       
 
 class CandidateGenerator:
     """Generate unique candidate pairs and retain their block provenance."""
@@ -116,11 +115,18 @@ class CandidateGenerator:
     def from_config(cls, config: ClientConfig) -> "CandidateGenerator":
         if config.CANDIDATE_BLOCKS:
             return cls(config.CANDIDATE_BLOCKS)
-        else:
+
+        # Preserve the existing single-block configuration as legacy_v1.
+        blocking = config.BLOCKING
+        if blocking.portion:
             block = CandidateBlock(
-                type="exact",
-                field='first_name'
+                type="prefix",
+                field=blocking.column,
+                length=3,
+                direction=blocking.portion,
             )
+        else:
+            block = CandidateBlock(type="exact", field=blocking.column)
         return cls([block])
 
     @staticmethod
@@ -152,8 +158,12 @@ class CandidateGenerator:
 
                         bucket_ids = record_ids[positions]
                         for left_id, right_id in combinations(bucket_ids, 2):
-                            pair = (left_id, right_id) if str(left_id) < str(right_id) else (right_id, left_id)
-                            pairs[pair].add(block_name) 
+                            pair = (
+                                (left_id, right_id)
+                                if str(left_id) < str(right_id)
+                                else (right_id, left_id)
+                            )
+                            pairs[pair].add(block_name)
 
         sorted_pairs = sorted(pairs.items(), key=lambda item: tuple(map(str, item[0])))
         rows = []
@@ -166,7 +176,6 @@ class CandidateGenerator:
                         "candidate_blocks": tuple(sorted(blocks)),
                     }
                 )
-        
         return pd.DataFrame(
             rows,
             columns=["left_record_id", "right_record_id", "candidate_blocks"],
