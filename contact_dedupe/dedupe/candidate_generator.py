@@ -35,7 +35,6 @@ class BlockGenerator:
         matches = [
             column for column in df.columns
             if column.lower().replace(" ", "_").startswith(f"clean_{normalized}")
-            if column.lower().replace(" ", "_").startswith(f"clean_{normalized}")
         ]
         if matches:
             return matches
