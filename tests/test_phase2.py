@@ -126,3 +126,14 @@ def test_combine_fields_preserves_missing_values_and_ignores_blanks():
 
     assert combined.tolist() == ["123", "MainStreet"]
     assert combined.name == "address_combined"
+
+
+def test_add_record_ids_vectorized_fallback_uses_positions_not_index():
+    from contact_dedupe.dedupe.normalize import add_record_ids
+
+    source = pd.DataFrame({"value": ["a", "b"]}, index=[10, 42])
+
+    result = add_record_ids(source)
+
+    assert result["_record_id"].tolist() == ["record:0", "record:1"]
+    assert result.index.tolist() == [10, 42]

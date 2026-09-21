@@ -2,7 +2,12 @@ import pandas as pd
 from typing import Callable, cast, Any
 import click
 
-from .cleaning import ScalarValue, clean_name, clean_email, clean_phone, clean_address
+from .cleaning import (
+    clean_address_series,
+    clean_email_series,
+    clean_name_series,
+    clean_phone_series,
+)
 
 from contact_dedupe.common.models import Columns
 from contact_dedupe.common.exceptions import ConfigError
@@ -48,20 +53,24 @@ def add_record_ids(
     if source_column and source_column in result.columns:
         source = result[source_column]
         if cast(bool, source.notna().all()) and not cast(bool, source.duplicated().any()):
-            result[RECORD_ID_COLUMN] = cast(pd.Series, source.map(lambda value: f"record:{value}"))
+            result[RECORD_ID_COLUMN] = source.astype("string").radd("record:")
             return result
 
-    result[RECORD_ID_COLUMN] = [f"record:{position}" for position in range(len(result))]
+    positions = pd.Series(
+        pd.RangeIndex(len(result)).astype("string"),
+        index=result.index,
+    )
+    result[RECORD_ID_COLUMN] = positions.radd("record:")
     return result
 
 
 def safe_apply(
     df: pd.DataFrame,
     col: str,
-    clean_fn: Callable[[ScalarValue], str | None],
+    clean_fn: Callable[[pd.Series], pd.Series],
 ) -> pd.Series:
     try:
-        return cast(pd.Series, df[col].apply(clean_fn))
+        return clean_fn(df[col])
     except KeyError:
         raise ConfigError(f"Column name is not in the dataframe: {col}")
     except Exception as e:
@@ -71,7 +80,7 @@ def combine_fields(fields: list[pd.Series], contact_type: str) -> pd.Series:
     field_df = pd.concat(fields, axis=1).astype("string")
     field_df = field_df.apply(lambda column: column.str.strip())
 
-    combined = cast(pd.Series, field_df.fillna("").agg("".join, axis=1))
+    combined = field_df.fillna("").sum(axis=1)
     combined = cast(pd.Series, combined.mask(combined.eq("")))
     combined.name = f"{contact_type}_combined"
     return combined
@@ -90,9 +99,9 @@ def normalize_contact_method(
     df = df.copy()
 
     clean_fns = {
-        'address': clean_address,
-        'phone': clean_phone,
-        'email': clean_email
+        "address": clean_address_series,
+        "phone": clean_phone_series,
+        "email": clean_email_series,
     }
     clean_fn = clean_fns[contact_type]
 
@@ -134,10 +143,8 @@ def normalize_contact_method(
         if getattr(data, contact_type).include_name:
 
             parts += [s[mask] for s in name_cache['names']]
-            joined_name = pd.concat(cast(list[pd.Series], parts), axis=1).apply(
-                lambda row: "|".join(str(v) for v in row if pd.notna(v) and str(v).strip()),
-                axis=1,
-            )
+            joined_name = pd.concat(cast(list[pd.Series], parts), axis=1)
+            joined_name = joined_name.astype("string").fillna("").sum(axis=1)
 
             col = f'clean_{series.name}:name_{contact_type}'
             
@@ -168,10 +175,10 @@ def normalize_df(
         name_cols = [value for value in data.name.columns if data.name.columns]
         combine_name_cols = [value for value in data.name.combine if data.name.combine]
         if name_cols:
-            name_cache['names'] = [safe_apply(df,col,clean_name) for col in name_cols]
+            name_cache["names"] = [clean_name_series(df[col]) for col in name_cols]
         else:
-            name_series = [safe_apply(df,col,clean_name) for col in combine_name_cols]
-            name_cache['names'] = ([combine_fields(name_series,'names')])
+            name_series = [clean_name_series(df[col]) for col in combine_name_cols]
+            name_cache["names"] = [combine_fields(name_series, "names")]
 
     with click.progressbar(contact_types, label='cleaning data') as bar:
         # Passing every contact type and their respective yaml column data except name.

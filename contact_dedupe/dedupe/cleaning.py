@@ -45,3 +45,43 @@ def clean_address(a: ScalarValue) -> Optional[str]:
     a = a.split("-")[0]
     cleaned = re.sub(r"[\s\"\'\-,\.]", "", str(a)).lower()
     return cleaned or None
+
+
+def _missing_series(values: pd.Series) -> pd.Series:
+    """Return the missing/blank mask shared by the vectorized cleaners."""
+    text = values.astype("string")
+    return values.isna() | text.str.strip().eq("")
+
+
+def clean_name_series(values: pd.Series) -> pd.Series:
+    """Vectorized equivalent of :func:`clean_name`."""
+    text = values.astype("string")
+    cleaned = text.str.replace(r"[^a-zA-Z]", "", regex=True).str.lower()
+    return cleaned.mask(_missing_series(values) | cleaned.eq(""))
+
+
+def clean_email_series(values: pd.Series) -> pd.Series:
+    """Vectorized equivalent of :func:`clean_email`."""
+    text = values.astype("string")
+    cleaned = text.str.strip().str.lower().str.replace(" ", "", regex=False)
+    return cleaned.mask(_missing_series(values) | cleaned.eq(""))
+
+
+def clean_phone_series(values: pd.Series) -> pd.Series:
+    """Vectorized equivalent of :func:`clean_phone`."""
+    text = values.astype("string")
+    cleaned = text.str.replace(r"\D", "", regex=True)
+    leading_country_code = cleaned.str.len().eq(11) & cleaned.str.startswith("1")
+    cleaned = cleaned.mask(leading_country_code, cleaned.str[1:])
+    return cleaned.mask(_missing_series(values) | cleaned.eq(""))
+
+
+def clean_address_series(values: pd.Series) -> pd.Series:
+    """Vectorized equivalent of :func:`clean_address`."""
+    text = values.astype("string")
+    cleaned = (
+        text.str.split("-", n=1).str[0]
+        .str.replace(r"[\s\"\'\-,\.]", "", regex=True)
+        .str.lower()
+    )
+    return cleaned.mask(_missing_series(values) | cleaned.eq(""))
