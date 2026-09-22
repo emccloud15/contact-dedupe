@@ -162,7 +162,8 @@ class ClientConfig(BaseModel):
     BASE: Optional[bool] = False
     COLUMNS: Columns
     BLOCKING: Blocking
-    CANDIDATE_BLOCKS: Optional[list[CandidateBlock]] = None
+    CANDIDATE_BLOCK_PROFILE: str = 'default_v1'
+    CANDIDATE_BLOCKS: dict[str, list[CandidateBlock]]
     MATCHING_PROFILE: str = "legacy_v1"
     MATCHING_PROFILES: dict[str, MatchingProfile] = Field(default_factory=dict)
     EXCLUSION: Optional[Exclusion] = None

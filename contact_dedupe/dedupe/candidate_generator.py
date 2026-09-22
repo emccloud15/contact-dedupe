@@ -14,7 +14,32 @@ from contact_dedupe.common.exceptions import ConfigError
 from contact_dedupe.common.models import CandidateBlock, ClientConfig
 from .normalize import RECORD_ID_COLUMN
 
+DEFAULT_BLOCKS: dict[str, list[CandidateBlock]] = {
+    "default_v1" : [
+        CandidateBlock(
+            type="exact",
+            field="email",
+            max_bucket_size=500),
+        CandidateBlock(
+            type="exact",
+            field="phone",
+            max_bucket_size=500
+        ),
+        CandidateBlock(
+            type="exact",
+            field="postal_code",
+            length=3,
+            direction="start",
+            max_bucket_size=1000
+        ),
+        CandidateBlock(
+            type="composite",
+            fields=["last_name", "postal_code"],
+            max_bucket_size=500
+        )
+    ]
 
+}
 class BlockGenerator:
     """Generate blocking keys for record comparison."""
 
@@ -112,8 +137,15 @@ class CandidateGenerator:
 
     @classmethod
     def from_config(cls, config: ClientConfig) -> "CandidateGenerator":
-        if config.CANDIDATE_BLOCKS:
-            return cls(config.CANDIDATE_BLOCKS)
+        profile_name = config.CANDIDATE_BLOCK_PROFILE
+        configured_profiles = config.CANDIDATE_BLOCKS
+        if configured_profiles:
+            blocks = configured_profiles.get(
+                profile_name,
+                DEFAULT_BLOCKS.get(profile_name, DEFAULT_BLOCKS['default_v1'])
+            )
+            return cls(blocks)
+        
 
         # Preserve the existing single-block configuration as legacy_v1.
         blocking = config.BLOCKING

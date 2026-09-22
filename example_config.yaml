@@ -46,21 +46,25 @@ BLOCKING:
   column: ZIP
   portion: start
 
-CANDIDATE_BLOCKS:
-  - type: exact
-    field: email
-    max_bucket_size: 500
-  - type: exact
-    field: phone
-    max_bucket_size: 500
-  - type: prefix
-    field: postal_code
-    length: 3
-    direction: start
-    max_bucket_size: 1000
-  - type: composite
-    fields: [last_name, postal_code]
-    max_bucket_size: 500
+CANDIDATE_BLOCK_PROFILE: default_v1
+
+CANDIDATE_BLOCK_PROFILES:
+  default_v1:
+    - type: exact
+      field: email
+      max_bucket_size: 500
+    - type: exact
+      field: phone
+      max_bucket_size: 500
+    - type: prefix
+      field: postal_code
+      length: 3
+      direction: start
+      max_bucket_size: 1000
+    - type: composite
+      fields: [last_name, postal_code]
+      max_bucket_size: 500
+  
 
 MATCHING_PROFILE: balanced_v1
 
