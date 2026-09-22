@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, cast
+from enum import StrEnum
+from typing import Literal, Any, cast
+
+import click
 
 import pandas as pd
 from nicknames import NickNamer
@@ -13,11 +16,17 @@ from contact_dedupe.common.models import ClientConfig
 from .normalize import RECORD_ID_COLUMN
 
 
+class MatchType(StrEnum):
+    FUZZY = "FUZZY"
+    NICKNAME = "NICKNAME"
+    EXACT = "EXACT"
+
 @dataclass(frozen=True)
 class FieldEvidence:
     field: str
     score: float | None
     exact: bool
+    match_type: str | None
     available: bool
 
 
@@ -37,13 +46,13 @@ class MatchEvidence:
 class EvidenceBuilder:
     """Compare all normalized fields for each candidate pair."""
 
-    def __init__(self, client_cfg: ClientConfig | None = None):
+    def __init__(self, client_cfg: ClientConfig | None):
         self.client_cfg = client_cfg
         self.nickname_finder = NickNamer()
         self._nickname_cache: dict[str, set[str]] = {}
 
     @staticmethod
-    def _available(value: object) -> bool:
+    def _available(value: Any) -> bool:
         return cast(bool, pd.notna(value)) and bool(str(value).strip())
 
     @staticmethod
@@ -81,8 +90,8 @@ class EvidenceBuilder:
         return float(config.weight)
 
     def _build_pair_from_rows(
-        self, rows: pd.DataFrame, comparison_columns: list[str], left_id: object,
-        right_id: object, candidate_blocks: tuple[str, ...] = (),
+        self, rows: pd.DataFrame, comparison_columns: list[str], left_id: Any,
+        right_id: Any, candidate_blocks: tuple[str, ...] = (),
     ) -> MatchEvidence:
         left = rows.loc[left_id] 
         right = rows.loc[right_id]
@@ -98,21 +107,22 @@ class EvidenceBuilder:
             left_value, right_value = left[column], right[column]
             available = self._available(left_value) and self._available(right_value)
             if not available:
-                fields[column] = FieldEvidence(column, None, False, False)
-                missing.append(column)
+                fields[column] = FieldEvidence(column, None, False, None, False)
+                missing.append(self._source_name(column))
                 continue
 
             exact = str(left_value) == str(right_value)
-            score = 100.0 if exact else float(WRatio(str(left_value), str(right_value)))
-            if self._field_type(column) == "name" and self._is_nickname_match(left_value, right_value):
+            score = 100.0 if exact else float(WRatio(str(left_value), str(right_value)))            
+            match_type = MatchType.EXACT if exact else MatchType.FUZZY
+
+            assert self.client_cfg
+            if self._source_name(column) == self.client_cfg.NICKNAME and self._is_nickname_match(left_value, right_value):
                 score = 100.0
-                exact = True
-            fields[column] = FieldEvidence(column, score, exact, True)
-            used.append(column)
+                match_type = MatchType.NICKNAME
+            fields[column] = FieldEvidence(column, score, exact, match_type, True)
+            used.append(self._source_name(column))
             if exact:
-                matched.append(column)
-            if self._field_type(column) in {"email", "phone"} and not exact:
-                conflicts.append(column)
+                matched.append(self._source_name(column))
             weight = self._field_weight(column)
             weighted_score += score * weight
             active_weight += weight
@@ -153,12 +163,18 @@ class EvidenceBuilder:
             column for column in normalized.columns
             if column.startswith("clean_") and ":" in column
         ]
-        return [
-            self._build_pair_from_rows(
-                rows, comparison_columns,
-                row["left_record_id"],
-                row["right_record_id"],
-                tuple(row["candidate_blocks"]),
-            )
-            for row in candidates.to_dict(orient="records")
-        ]
+        final = []
+        with click.progressbar(candidates.to_dict(orient="records")) as bar:
+            for row in bar:
+                final.append(
+                    self._build_pair_from_rows(
+                    rows, comparison_columns,
+                    row["left_record_id"],
+                    row["right_record_id"],
+                    tuple(row["candidate_blocks"]),
+                    )
+                )
+        return final
+
+
+        
