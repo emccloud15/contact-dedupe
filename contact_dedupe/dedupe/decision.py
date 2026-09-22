@@ -65,6 +65,10 @@ class DecisionEngine:
             if column.rsplit(":", 1)[-1] == field_type
         ]
 
+    @staticmethod
+    def _source_name(column: str) -> str:
+        return column.removeprefix("clean_").rsplit(":", 1)[0]
+    
     def _matches(self, rule: str, evidence: MatchEvidence) -> bool:
         email = self._fields(evidence, "email")
         phone = self._fields(evidence, "phone")
@@ -72,6 +76,11 @@ class DecisionEngine:
         address = self._fields(evidence, "address")
         email_exact = any(field.available and field.exact for field in email)
         phone_exact = any(field.available and field.exact for field in phone)
+        address_exact = any(field.available and field.exact for field in address)
+        first_name_exact = any(field.available and field.exact and self._source_name(field.field).__contains__('First') for field in name)
+        last_name_exact = any(field.available and field.exact and self._source_name(field.field).__contains__('Last') for field in name)
+        
+
         name_high = any(
             field.available and field.score is not None and field.score >= self.upper_bound
             for field in name
@@ -80,6 +89,12 @@ class DecisionEngine:
             field.available and field.score is not None and field.score >= self.upper_bound
             for field in address
         )
+        email_high = any(
+            field.available and field.score is not None and field.score >=self.upper_bound
+            for field in email
+        )
+        print(evidence)
+
         return {
             "email_exact": email_exact,
             "phone_exact": phone_exact,
