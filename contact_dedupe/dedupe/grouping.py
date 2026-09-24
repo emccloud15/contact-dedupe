@@ -42,7 +42,7 @@ class DuplicateGrouper:
     def build_groups(self, decisions: list[PairDecision]) -> GroupingResult:
         accepted = [
             item for item in decisions
-            if item.decision is Decision.AUTO_MERGE
+            if item.decision is Decision.IGNORE
             or (self.include_review and item.decision is Decision.REVIEW)
         ]
         parent: dict[Any, Any] = {}
@@ -81,7 +81,7 @@ class DuplicateGrouper:
                 conflicts.add("TRANSITIVE_CHAIN")
             for edge in edges:
                 conflicts.update(edge.evidence.conflicts)
-            group_decision = Decision.REVIEW if conflicts else Decision.AUTO_MERGE
+            group_decision = Decision.REVIEW if conflicts else Decision.MERGE
             groups.append(
                 DuplicateGroup(
                     group_id=f"group:{ordered[0]}",

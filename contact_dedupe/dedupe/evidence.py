@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Literal, Any, cast
+from typing import Optional, Any, cast
 
 import click
 
@@ -24,7 +24,10 @@ class MatchType(StrEnum):
 @dataclass(frozen=True)
 class FieldEvidence:
     field: str
-    score: float | None
+    contact_type: str
+    source_name: str
+    score: float
+    weight: float
     exact: bool
     match_type: str | None
     available: bool
@@ -39,8 +42,8 @@ class MatchEvidence:
     missing_fields: list[str]
     used_fields: list[str]
     conflicts: list[str]
+    match_score: float
     candidate_blocks: tuple[str, ...] = field(default_factory=tuple)
-    match_score: float | None = None
 
 
 class EvidenceBuilder:
@@ -99,7 +102,16 @@ class EvidenceBuilder:
             left_value, right_value = left[column], right[column]
             available = self._available(left_value) and self._available(right_value)
             if not available:
-                fields[column] = FieldEvidence(column, None, False, None, False)
+                fields[column] = FieldEvidence(
+                    field=column,
+                    contact_type=self._field_type(column),
+                    source_name=self._source_name(column),
+                    score=0.0,
+                    weight=self._field_weight(column),
+                    exact=False,
+                    match_type=None,
+                    available=False,
+                )
                 missing.append(self._source_name(column))
                 continue
 
@@ -111,7 +123,16 @@ class EvidenceBuilder:
             if self._source_name(column) == self.client_cfg.NICKNAME and self._is_nickname_match(left_value, right_value):
                 score = 100.0
                 match_type = MatchType.NICKNAME
-            fields[column] = FieldEvidence(column, score, exact, match_type, True)
+            fields[column] = FieldEvidence(
+                field=column,
+                contact_type=self._field_type(column),
+                source_name=self._source_name(column),
+                score=score,
+                weight=self._field_weight(column),
+                exact=exact,
+                match_type=match_type,
+                available=True,
+            )
             used.append(self._source_name(column))
             if exact:
                 matched.append(self._source_name(column))
@@ -129,7 +150,7 @@ class EvidenceBuilder:
             used_fields=used,
             conflicts=conflicts,
             candidate_blocks=tuple(candidate_blocks),
-            match_score=(weighted_score / active_weight) if active_weight else None,
+            match_score=(weighted_score / active_weight) if active_weight else 0.0,
         )
 
     def build_pair(

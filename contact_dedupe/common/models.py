@@ -1,10 +1,16 @@
 import math
+import re
 import warnings
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .exceptions import ConfigError
+
+
+def rule_name(value: str) -> str:
+    """Convert a source column name into its YAML rule-token form."""
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
 
 
 class ColumnTypeConfig(BaseModel):
@@ -126,23 +132,15 @@ class CandidateBlock(BaseModel):
 
 
 class MatchingProfile(BaseModel):
-    auto_merge_rules: list[str] = Field(default_factory=list)
-    review_rules: list[str] = Field(default_factory=list)
+    auto_merge_rule: str | None = None
+    auto_ignore_rule: str | None = None
 
-    @field_validator("auto_merge_rules", "review_rules")
+    @field_validator("auto_merge_rule", "auto_ignore_rule")
     @classmethod
-    def validate_rule_names(cls, values: list[str]) -> list[str]:
-        supported = {
-            "email_exact",
-            "phone_exact",
-            "email_exact_and_phone_exact",
-            "phone_exact_and_name_high",
-            "name_high_and_address_high",
-        }
-        unsupported = sorted(set(values) - supported)
-        if unsupported:
-            raise ValueError(f"unsupported matching rule(s): {', '.join(unsupported)}")
-        return values
+    def validate_rule(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("matching rules must be non-empty strings")
+        return value.strip() if value is not None else None
 
 
 class Exclusion(BaseModel):
@@ -222,6 +220,32 @@ class ClientConfig(BaseModel):
     def validate_has_configured_fields(self):
         if not any(field_value is not None for _, field_value in self.COLUMNS):
             raise ConfigError("At least one contact field must be configured in COLUMNS.")
+        return self
+
+    @model_validator(mode="after")
+    def warn_rule_name_collisions(self):
+        group_names = {contact_type for contact_type, config in self.COLUMNS if config is not None}
+        for contact_type, config in self.COLUMNS:
+            if config is None:
+                continue
+            if contact_type == "address" and config.columns and not config.combine:
+                warnings.warn(
+                    "Address columns are configured without 'combine'. "
+                    "The address_exact rule requires an address combine block, "
+                    "so add 'combine' if address_exact is needed.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            for column in config.active_columns:
+                token = rule_name(column)
+                if token in group_names:
+                    warnings.warn(
+                        f"Column {column!r} normalizes to rule name {token!r}, "
+                        f"which conflicts with the contact group {token!r}. "
+                        "Rename the column and update the YAML to avoid ambiguous rules.",
+                        UserWarning,
+                        stacklevel=2,
+                    )
         return self
 
     @model_validator(mode="after")

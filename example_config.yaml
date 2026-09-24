@@ -68,16 +68,12 @@ CANDIDATE_BLOCK_PROFILES:
 
 MATCHING_PROFILE: balanced_v1
 
-# You can define client-specific profiles using only the supported rule names:
-# email_exact, phone_exact, email_exact_and_phone_exact,
-# phone_exact_and_name_high, name_high_and_address_high.
+# Rules are built dynamically from the configured column names and contact groups.
+# Use _and_/_or_ for inner operators and double underscores for an outer layer.
 MATCHING_PROFILES:
   balanced_v1:
-    auto_merge_rules:
-      - email_exact
-      - phone_exact_and_name_high
-    review_rules:
-      - name_high_and_address_high
+    auto_merge_rule: email_high_or_phone_high
+    auto_ignore_rule: match_score_low
 
 MAIN_MATCH_CRITERIA: Email
 MATCH_FIELD: Contact ID
