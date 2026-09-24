@@ -206,15 +206,11 @@ class DecisionEngine:
             ops.append(match.group(2))
             start = match.end()
         parts.append(expression[start:])
-
         value = self._parse_rule(parts[0], evidence)
         for operator, part in zip(ops, parts[1:]):
             right = self._parse_rule(part, evidence)
             value = value and right if operator == "and" else value or right
         return value
-
-    def _matches(self, rule: str, evidence: MatchEvidence) -> bool:
-        return self._parse_rule(rule, evidence)
 
     def decide(self, evidence: MatchEvidence) -> PairDecision:
         if not evidence.used_fields:
@@ -231,7 +227,7 @@ class DecisionEngine:
         assert self.profile.auto_ignore_rule
         assert self.profile.auto_merge_rule
 
-        if self._matches(self.profile.auto_ignore_rule, evidence):
+        if self._parse_rule(self.profile.auto_ignore_rule, evidence):
             return PairDecision(
                 Decision.IGNORE,
                 self.profile.auto_ignore_rule,
@@ -241,7 +237,7 @@ class DecisionEngine:
                 self.profile_name,
                 evidence
             )
-        elif self._matches(self.profile.auto_merge_rule, evidence):
+        elif self._parse_rule(self.profile.auto_merge_rule, evidence):
             return PairDecision(
                 Decision.MERGE,
                 self.profile.auto_merge_rule,
