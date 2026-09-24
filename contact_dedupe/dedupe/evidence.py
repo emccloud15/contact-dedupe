@@ -78,16 +78,8 @@ class EvidenceBuilder:
         if self.client_cfg is None:
             return 1.0
         field_type = self._field_type(column)
-        config = getattr(self.client_cfg.COLUMNS, field_type, None)
-        if config is None:
-            return 1.0
         source = self._source_name(column)
-        if isinstance(config.weight, list):
-            for configured_name, weight in config.weight:
-                if configured_name == source:
-                    return float(weight)
-            return 0.0
-        return float(config.weight)
+        return self.client_cfg.weight_for(field_type, source)
 
     def _build_pair_from_rows(
         self, rows: pd.DataFrame, comparison_columns: list[str], left_id: Any,
@@ -126,6 +118,7 @@ class EvidenceBuilder:
             weight = self._field_weight(column)
             weighted_score += score * weight
             active_weight += weight
+
 
         return MatchEvidence(
             left_id=left_id,

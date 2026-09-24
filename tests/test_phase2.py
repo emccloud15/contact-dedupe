@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from contact_dedupe.common.exceptions import ConfigError
-from contact_dedupe.common.models import Bounds, ColumnTypeConfig
+from contact_dedupe.common.models import Bounds, ColumnTypeConfig, ClientConfig
 from contact_dedupe.common.utils import Utilities
 from contact_dedupe.dedupe.cleaning import clean_address, clean_name, clean_phone
 from contact_dedupe.dedupe.normalize import normalize_df
@@ -113,6 +113,81 @@ def test_config_loader_reports_invalid_bounds(tmp_path):
 def test_column_weights_must_be_in_range():
     with pytest.raises(ValueError, match="between 0 and 1"):
         ColumnTypeConfig(columns=["Email"], weight=1.1)
+
+
+def _weight_config(columns, *, phone=None, email=None, name=None):
+    contact_configs = {}
+    for key, weight in (("phone", phone), ("email", email), ("name", name)):
+        if key not in columns:
+            continue
+        contact_configs[key] = {"columns": columns[key]}
+        if weight is not None:
+            contact_configs[key]["weight"] = weight
+    return ClientConfig.model_validate(
+        {
+            "CLIENT_NAME": "weights",
+            "COLUMNS": contact_configs,
+            "CANDIDATE_BLOCKS": {},
+            "BLOCKING": {"strict": False, "type": "name", "column": "Name"},
+            "MAIN_MATCH_CRITERIA": next(iter(next(iter(columns.values())))),
+            "MATCH_FIELD": next(iter(next(iter(columns.values())))),
+            "BOUNDS": {},
+        }
+    )
+
+
+def test_contact_type_weight_is_split_across_its_columns():
+    config = _weight_config(
+        {"phone": ["Home", "Work", "Mobile"], "email": ["Email"]},
+        phone=0.25,
+        email=0.75,
+    )
+
+    assert config.weight_for("phone", "Home") == pytest.approx(1 / 12)
+    assert config.weight_for("phone", "Work") == pytest.approx(1 / 12)
+    assert config.weight_for("email", "Email") == pytest.approx(0.75)
+
+
+def test_missing_column_weight_warns_and_can_be_auto_balanced():
+    with pytest.warns(UserWarning, match="name.Full Name"):
+        config = _weight_config(
+            {"name": ["First Name", "Last Name", "Full Name"]},
+            name=[["First Name", 0.2], ["Last Name", 0.3]],
+        )
+
+    config.auto_balance_weights()
+
+    assert config.weight_for("name", "First Name") == pytest.approx(0.2 / 0.75)
+    assert config.weight_for("name", "Last Name") == pytest.approx(0.3 / 0.75)
+    assert config.weight_for("name", "Full Name") == pytest.approx(0.25 / 0.75)
+    assert sum(weight for _, weight in config.COLUMNS.name.weight) == pytest.approx(1.0)
+
+
+def test_complete_explicit_weights_must_total_one():
+    with pytest.warns(UserWarning, match="not 1.0"):
+        config = _weight_config(
+            {"name": ["First Name", "Last Name"]},
+            name=[["First Name", 0.2], ["Last Name", 0.2]],
+        )
+
+    config.auto_balance_weights()
+
+    assert config.weight_for("name", "First Name") == pytest.approx(0.5)
+    assert config.weight_for("name", "Last Name") == pytest.approx(0.5)
+
+
+def test_weights_greater_than_one_are_proportionally_reduced():
+    with pytest.warns(UserWarning, match="not 1.0"):
+        config = _weight_config(
+            {"phone": ["Phone"], "email": ["Email"]},
+            phone=0.75,
+            email=0.75,
+        )
+
+    config.auto_balance_weights()
+
+    assert config.weight_for("phone", "Phone") == pytest.approx(0.5)
+    assert config.weight_for("email", "Email") == pytest.approx(0.5)
 
 
 def test_combine_fields_preserves_missing_values_and_ignores_blanks():

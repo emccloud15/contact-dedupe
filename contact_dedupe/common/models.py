@@ -1,4 +1,5 @@
 import math
+import warnings
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -10,7 +11,7 @@ class ColumnTypeConfig(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
     include_name: bool = False
-    weight: list[tuple[str, float]] | float = 0.0
+    weight: list[tuple[str, float | None]] | float = 0.0
     columns: list[str] = Field(default_factory=list)
     combine: list[str] = Field(default_factory=list)
 
@@ -28,10 +29,18 @@ class ColumnTypeConfig(BaseModel):
     def validate_weights(cls, value):
         pairs = value if isinstance(value, list) else [(None, value)]
         for field_name, weight in pairs:
+            if weight is None:
+                continue
             if not isinstance(weight, (int, float)) or not math.isfinite(weight) or not 0 <= weight <= 1:
                 label = f" for {field_name!r}" if field_name else ""
                 raise ValueError(f"weight{label} must be a finite number between 0 and 1")
         return value
+
+    @property
+    def active_columns(self) -> list[str]:
+        """Return the source columns that need a share of this type's weight."""
+        return list(dict.fromkeys([*self.columns, *self.combine]))
+
 
 class Columns(BaseModel):
     phone: Optional[ColumnTypeConfig] = None
@@ -249,3 +258,108 @@ class ClientConfig(BaseModel):
                     if len(ct[1].combine) < 2:
                         raise ConfigError(f"To use the 'combine' setting for: '{ct[0]}' at least two fields must be listed. One field can not be combined with itself\n Current 'combine' listed fields: {ct[1].combine}")
         return self
+
+    def _configured_weight_parts(self) -> tuple[dict[str, float], list[str]]:
+        """Return explicit weights and columns that still need a weight."""
+        explicit: dict[str, float] = {}
+        missing: list[str] = []
+
+        for contact_type, config in self.COLUMNS:
+            if config is None:
+                continue
+            columns = config.active_columns
+            if isinstance(config.weight, list):
+                configured = set(columns)
+                configured_weights = {column: weight for column, weight in config.weight}
+                for column, weight in config.weight:
+                    if column not in configured:
+                        raise ConfigError(
+                            f"Weight column {column!r} is not configured for contact type {contact_type!r}."
+                        )
+                    if weight is None or weight <= 0:
+                        continue
+                    explicit[column] = float(weight)
+                missing.extend(
+                    f"{contact_type}.{column}"
+                    for column in columns
+                    if configured_weights.get(column) is None or configured_weights.get(column, 0) <= 0
+                )
+            elif config.weight > 0 and columns:
+                share = float(config.weight) / len(columns)
+                explicit.update({column: share for column in columns})
+            else:
+                missing.extend(f"{contact_type}.{column}" for column in columns)
+
+        return explicit, missing
+
+    def has_unassigned_weights(self) -> bool:
+        """Whether any configured source column has no positive weight assignment."""
+        _, missing = self._configured_weight_parts()
+        return bool(missing)
+
+    def needs_weight_balance(self) -> bool:
+        """Whether weights are missing or do not currently total one."""
+        explicit, missing = self._configured_weight_parts()
+        return bool(missing) or not math.isclose(sum(explicit.values()), 1.0, abs_tol=1e-9)
+
+    def validate_weight_configuration(self) -> ClientConfig:
+        explicit, missing = self._configured_weight_parts()
+        total = sum(explicit.values())
+        if missing:
+            warnings.warn(
+                "Some configured contact columns have no weight: "
+                + ", ".join(missing)
+                + ". Choose auto-balance to distribute the remaining weight, or exit.",
+                UserWarning,
+                stacklevel=2,
+            )
+        if not math.isclose(total, 1.0, abs_tol=1e-9):
+            warnings.warn(
+                f"Total contact-column weights are {total:g}, not 1.0. "
+                "Choose auto-balance to proportionally normalize them, or exit.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_contact_column_weights(self) -> ClientConfig:
+        return self.validate_weight_configuration()
+
+    def auto_balance_weights(self) -> ClientConfig:
+        """Assign missing columns and proportionally normalize all weights to one."""
+        explicit, missing = self._configured_weight_parts()
+        provisional = dict(explicit)
+        default_weight = (
+            sum(explicit.values()) / len(explicit) if explicit else 1.0
+        )
+        for item in missing:
+            _, column = item.split(".", 1)
+            provisional[column] = default_weight
+
+        total = sum(provisional.values())
+        if total <= 0:
+            raise ConfigError("Cannot auto-balance contact-column weights because no positive weights were provided.")
+        normalized = {column: weight / total for column, weight in provisional.items()}
+
+        for contact_type, config in self.COLUMNS:
+            if config is None:
+                continue
+            columns = config.active_columns
+            assigned = {
+                column: normalized[column]
+                for column in columns
+                if column in normalized
+            }
+            config.weight = [(column, assigned[column]) for column in columns]
+        return self
+
+    def weight_for(self, contact_type: str, column: str) -> float:
+        """Return the resolved weight for one normalized source column."""
+        config = getattr(self.COLUMNS, contact_type, None)
+        if config is None:
+            return 1.0
+        if isinstance(config.weight, list):
+            return float(dict(config.weight).get(column) or 0.0)
+        columns = config.active_columns
+        return float(config.weight) / len(columns) if columns else 0.0

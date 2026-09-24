@@ -69,6 +69,14 @@ def main(argv: list[str] | None = None):
             dupe_file = Path(args.file) if args.file else choose_file_or_directory("Select the CSV file to be deduped", "file")
         output_dir = Path(args.output) if args.output else choose_file_or_directory("Select the output directory", "directory")
         client_config = Utilities.load_client_config(yaml_file)
+        if client_config.needs_weight_balance():
+            auto_balance = questionary.confirm(
+                "Some contact columns have no weight. Auto-balance them?",
+                default=True,
+            ).ask()
+            if not auto_balance:
+                raise ConfigError("Weight configuration was not auto-balanced; exiting.")
+            client_config.auto_balance_weights()
         dupe_df = Utilities.load_data_df(dupe_file)
         output_path = output_dir / f"Output_{client_config.CLIENT_NAME}_{datetime.today().date()}"
         main_df = Dedupe(client_cfg=client_config, df=dupe_df)
