@@ -54,19 +54,6 @@ class Columns(BaseModel):
     address: Optional[ColumnTypeConfig] = None
     name: Optional[ColumnTypeConfig] = None
 
-class Blocking(BaseModel):
-    strict: bool
-    type: str
-    column: str
-    portion: Optional[str] = None
-
-    @field_validator("type", "column")
-    @classmethod
-    def validate_non_empty(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("blocking type and column must be non-empty")
-        return value
-
 
 class CandidateBlock(BaseModel):
     type: str
@@ -168,7 +155,6 @@ class ClientConfig(BaseModel):
     CLIENT_NAME: str
     BASE: Optional[bool] = False
     COLUMNS: Columns
-    BLOCKING: Optional[Blocking] = None
     CANDIDATE_BLOCK_PROFILE: str = 'default_v1'
     CANDIDATE_BLOCKS: dict[str, list[CandidateBlock]] = Field(default_factory=dict)
     MATCHING_PROFILE: str = "default_v1"

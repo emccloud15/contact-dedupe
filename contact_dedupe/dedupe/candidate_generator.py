@@ -139,26 +139,14 @@ class CandidateGenerator:
     def from_config(cls, config: ClientConfig) -> "CandidateGenerator":
         profile_name = config.CANDIDATE_BLOCK_PROFILE
         configured_profiles = config.CANDIDATE_BLOCKS
-        if configured_profiles:
-            blocks = configured_profiles.get(
+        blocks = configured_profiles.get(
                 profile_name,
                 DEFAULT_BLOCKS.get(profile_name, DEFAULT_BLOCKS['default_v1'])
             )
-            return cls(blocks)
+        return cls(blocks)
         
 
-        # Preserve the existing single-block configuration as legacy_v1.
-        blocking = config.BLOCKING
-        if blocking.portion:
-            block = CandidateBlock(
-                type="prefix",
-                field=blocking.column,
-                length=3,
-                direction=blocking.portion,
-            )
-        else:
-            block = CandidateBlock(type="exact", field=blocking.column)
-        return cls([block])
+
 
     @staticmethod
     def _usable(value: Any) -> bool:
