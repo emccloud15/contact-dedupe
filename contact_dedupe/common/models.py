@@ -170,8 +170,8 @@ class ClientConfig(BaseModel):
     COLUMNS: Columns
     BLOCKING: Blocking
     CANDIDATE_BLOCK_PROFILE: str = 'default_v1'
-    CANDIDATE_BLOCKS: dict[str, list[CandidateBlock]]
-    MATCHING_PROFILE: str = "legacy_v1"
+    CANDIDATE_BLOCKS: dict[str, list[CandidateBlock]] = Field(default_factory=dict)
+    MATCHING_PROFILE: str = "default_v1"
     MATCHING_PROFILES: dict[str, MatchingProfile] = Field(default_factory=dict)
     EXCLUSION: Optional[Exclusion] = None
     MAIN_MATCH_CRITERIA: str

@@ -212,6 +212,9 @@ class DecisionEngine:
             value = value and right if operator == "and" else value or right
         return value
 
+    def _matches(self, rule: str, evidence: MatchEvidence) -> bool:
+        return self._parse_rule(rule, evidence)
+
     def decide(self, evidence: MatchEvidence) -> PairDecision:
         if not evidence.used_fields:
             return PairDecision(

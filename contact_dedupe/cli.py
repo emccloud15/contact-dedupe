@@ -102,5 +102,5 @@ def main(argv: list[str] | None = None):
         click.echo(f"Field not found. If this is a Virtuous dedupe, ensure the 'Duplicate' prefixed fields were included in the export. {e}" )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - exercised through the console entry point
     main()

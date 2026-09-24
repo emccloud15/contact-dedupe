@@ -15,11 +15,11 @@ def evaluate_decisions(
     generated = {frozenset((x.evidence.left_id, x.evidence.right_id)) for x in items}
     predicted = {
         frozenset((x.evidence.left_id, x.evidence.right_id))
-        for x in items if x.decision in {Decision.AUTO_MERGE, Decision.REVIEW}
+        for x in items if x.decision in {Decision.MERGE, Decision.REVIEW}
     }
     auto = {
         frozenset((x.evidence.left_id, x.evidence.right_id))
-        for x in items if x.decision is Decision.AUTO_MERGE
+        for x in items if x.decision is Decision.MERGE
     }
     recall = len(generated & duplicate_pairs) / len(duplicate_pairs) if duplicate_pairs else 1.0
     precision = len(predicted & duplicate_pairs) / len(predicted) if predicted else 1.0

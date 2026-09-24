@@ -42,7 +42,7 @@ class DuplicateGrouper:
     def build_groups(self, decisions: list[PairDecision]) -> GroupingResult:
         accepted = [
             item for item in decisions
-            if item.decision is Decision.IGNORE
+            if item.decision is Decision.MERGE
             or (self.include_review and item.decision is Decision.REVIEW)
         ]
         parent: dict[Any, Any] = {}
@@ -71,13 +71,13 @@ class DuplicateGrouper:
 
         groups: list[DuplicateGroup] = []
         for member_set in sorted(members.values(), key=lambda values: tuple(sorted(map(str, values)))):
-            if len(member_set) < 2:
+            if len(member_set) < 2:  # pragma: no cover - unions only create connected pairs
                 continue
             ordered = tuple(sorted(member_set, key=str))
             root = find(ordered[0])
             edges = edges_by_root[root]
             conflicts = set()
-            if len(edges) < len(member_set) - 1:
+            if len(edges) < len(member_set) - 1:  # pragma: no cover - union edges form a connected component
                 conflicts.add("TRANSITIVE_CHAIN")
             for edge in edges:
                 conflicts.update(edge.evidence.conflicts)

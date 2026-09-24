@@ -187,7 +187,7 @@ def normalize_df(
             for ct in bar if ct != 'name']
         if data.name:
             # Create the combined name column if user chooses
-            if data.name.combine:
+            if data.name.combine and data.name.columns:
                 name_cache['names'] += ([combine_fields(name_cache['names'],'names')])
 
             # Rename and add name series into final cleaned output df

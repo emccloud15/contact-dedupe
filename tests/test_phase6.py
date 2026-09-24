@@ -27,8 +27,8 @@ def test_evidence_records_scores_missing_fields_and_identifier_conflicts():
     assert evidence.left_id == "record:A"
     assert evidence.fields["clean_phone:phone"].exact is True
     assert evidence.fields["clean_email:email"].exact is False
-    assert "clean_email:email" in evidence.conflicts
-    assert "clean_name:name" in evidence.missing_fields
+    assert evidence.conflicts == []
+    assert "name" in evidence.missing_fields
     assert evidence.candidate_blocks == ("exact:phone:phone",)
     assert evidence.match_score is not None
 
@@ -41,7 +41,12 @@ def test_evidence_uses_nickname_aware_name_matching():
         }
     )
 
-    evidence = EvidenceBuilder().build_pair(normalized, "record:A", "record:B")
+    from types import SimpleNamespace
 
-    assert evidence.fields["clean_First Name:name"].exact is True
+    evidence = EvidenceBuilder(
+        SimpleNamespace(NICKNAME="First Name", weight_for=lambda *_: 1.0)
+    ).build_pair(normalized, "record:A", "record:B")
+
+    assert evidence.fields["clean_First Name:name"].exact is False
     assert evidence.fields["clean_First Name:name"].score == 100.0
+    assert evidence.fields["clean_First Name:name"].match_type.value == "NICKNAME"

@@ -49,7 +49,7 @@ class MatchEvidence:
 class EvidenceBuilder:
     """Compare all normalized fields for each candidate pair."""
 
-    def __init__(self, client_cfg: ClientConfig | None):
+    def __init__(self, client_cfg: ClientConfig | None = None):
         self.client_cfg = client_cfg
         self.nickname_finder = NickNamer()
         self._nickname_cache: dict[str, set[str]] = {}
@@ -118,9 +118,14 @@ class EvidenceBuilder:
             exact = str(left_value) == str(right_value)
             score = 100.0 if exact else float(WRatio(str(left_value), str(right_value)))            
             match_type = MatchType.EXACT if exact else MatchType.FUZZY
+            if (
+                self.client_cfg
+                and self.client_cfg.NICKNAME
+                and self._source_name(column) == self.client_cfg.NICKNAME
+                and score != 100.0
+                and self._is_nickname_match(left_value, right_value)
+            ):
 
-            assert self.client_cfg
-            if self._source_name(column) == self.client_cfg.NICKNAME and self._is_nickname_match(left_value, right_value):
                 score = 100.0
                 match_type = MatchType.NICKNAME
             fields[column] = FieldEvidence(
