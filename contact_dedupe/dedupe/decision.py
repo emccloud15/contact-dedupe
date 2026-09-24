@@ -76,13 +76,17 @@ class DecisionEngine:
         address = self._fields(evidence, "address")
         email_exact = any(field.available and field.exact for field in email)
         phone_exact = any(field.available and field.exact for field in phone)
-        address_exact = any(field.available and field.exact for field in address)
+        address_exact = all(field.available and field.exact for field in address)
         first_name_exact = any(field.available and field.exact and self._source_name(field.field).__contains__('First') for field in name)
         last_name_exact = any(field.available and field.exact and self._source_name(field.field).__contains__('Last') for field in name)
         
 
-        name_high = any(
-            field.available and field.score is not None and field.score >= self.upper_bound
+        first_name_high = any(
+            field.available and field.score is not None and self._source_name(field.field).__contains__("First") and field.score >= self.upper_bound
+            for field in name
+        )
+        last_name_high = any(
+            field.available and field.score is not None and self._source_name(field.field).__contains__("Last") and field.score >= self.upper_bound
             for field in name
         )
         address_high = any(
@@ -93,14 +97,18 @@ class DecisionEngine:
             field.available and field.score is not None and field.score >=self.upper_bound
             for field in email
         )
-        print(evidence)
+
 
         return {
             "email_exact": email_exact,
+            "email_high" : email_high,
             "phone_exact": phone_exact,
-            "email_exact_and_phone_exact": email_exact and phone_exact,
-            "phone_exact_and_name_high": phone_exact and name_high,
-            "name_high_and_address_high": name_high and address_high,
+            "first_name_exact": first_name_exact,
+            "last_name_exact": last_name_exact,
+            "first_name_high" : first_name_high,
+            "last_name_high" : last_name_high,
+            "address_high": address_high,
+            "address_exact": address_exact
         }.get(rule, False)
 
     def decide(self, evidence: MatchEvidence) -> PairDecision:
