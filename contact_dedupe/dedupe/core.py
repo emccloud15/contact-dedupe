@@ -28,7 +28,7 @@ class Dedupe:
 
     def run(self) -> pd.DataFrame:
         contact_types = [field for field, value in self.client_cfg.COLUMNS if value]
-        required = [self.client_cfg.BLOCKING.column, self.client_cfg.MATCH_FIELD]
+        required = [self.client_cfg.MATCH_FIELD]
         if self.client_cfg.NICKNAME:
             required.append(self.client_cfg.NICKNAME)
         if self.client_cfg.EXCLUSION:

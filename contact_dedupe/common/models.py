@@ -168,7 +168,7 @@ class ClientConfig(BaseModel):
     CLIENT_NAME: str
     BASE: Optional[bool] = False
     COLUMNS: Columns
-    BLOCKING: Blocking
+    BLOCKING: Optional[Blocking] = None
     CANDIDATE_BLOCK_PROFILE: str = 'default_v1'
     CANDIDATE_BLOCKS: dict[str, list[CandidateBlock]] = Field(default_factory=dict)
     MATCHING_PROFILE: str = "default_v1"
@@ -248,24 +248,24 @@ class ClientConfig(BaseModel):
                     )
         return self
 
-    @model_validator(mode="after")
-    def validate_blocking(self) -> ClientConfig:
-        allowed_type = ["zipcode", "state", "id", "name", "idx","contact_type"]
-        allowed_portion = ["start", "end"]
+    # @model_validator(mode="after")
+    # def validate_blocking(self) -> ClientConfig:
+    #     allowed_type = ["zipcode", "state", "id", "name", "idx","contact_type"]
+    #     allowed_portion = ["start", "end"]
 
-        if self.BLOCKING.type.lower() not in allowed_type:
-            raise ConfigError(
-                f"BLOCKING type {self.BLOCKING.type} must be one of {allowed_type}"
-            )
-        elif (
-            self.BLOCKING.portion is not None
-            and self.BLOCKING.portion.lower() not in allowed_portion
-        ):
-            raise ConfigError(
-                f"BLOCKING portion {self.BLOCKING.portion} must be one of {allowed_portion}"
-            )
-        else:
-            return self
+    #     if self.BLOCKING.type.lower() not in allowed_type:
+    #         raise ConfigError(
+    #             f"BLOCKING type {self.BLOCKING.type} must be one of {allowed_type}"
+    #         )
+    #     elif (
+    #         self.BLOCKING.portion is not None
+    #         and self.BLOCKING.portion.lower() not in allowed_portion
+    #     ):
+    #         raise ConfigError(
+    #             f"BLOCKING portion {self.BLOCKING.portion} must be one of {allowed_portion}"
+    #         )
+    #     else:
+    #         return self
 
     @model_validator(mode='after')
     def validate_at_least_one_has_data(self):
