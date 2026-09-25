@@ -38,6 +38,13 @@ class PredicateSpec:
     column: str | None = None
     contact_type: str | None = None
 
+@dataclass
+class RuleNode:
+    op: str
+    children: list[RuleNode] | None = None
+    token: str | None = None
+
+
 
 DEFAULT_PROFILES: dict[str, MatchingProfile] = {
     "default_v1": MatchingProfile(
@@ -45,6 +52,7 @@ DEFAULT_PROFILES: dict[str, MatchingProfile] = {
         auto_ignore_rule="match_score_low",
     )
 }
+
 
 
 class DecisionEngine:
@@ -64,7 +72,30 @@ class DecisionEngine:
         self.upper_bound = client_cfg.BOUNDS.u_bound if client_cfg else 90.0
         self.lower_bound = client_cfg.BOUNDS.l_bound if client_cfg else 45.0
         self.predicate_registry = self._build_predicate_registry()
+        assert self.profile.auto_merge_rule
+        assert self.profile.auto_ignore_rule
+        self._merge_tree = self._compile(self.profile.auto_merge_rule)
+        self._ignore_tree = self._compile(self.profile.auto_ignore_rule)
 
+    def _compile(self, expression: str) -> RuleNode:
+        operators = list(re.finditer(r"(_+)(and|or)\1", expression))
+        if not operators:
+            token = expression.strip()
+            if not token:
+                raise ConfigError("Matching rule contains an empty expression")
+            return RuleNode(op='predicate', token=token)
+        depth = max(len(match.group(1)) for match in operators)
+        outer = [m for m in operators if len(m.group(1)) == depth]
+
+        parts, ops, start = [],[],0
+        for match in outer:
+            parts.append(expression[start:match.start()])
+            ops.append(match.group(2))
+            start = match.end()
+        parts.append(expression[start:])
+        children = [self._compile(p) for p in parts]
+        return RuleNode(op=ops[0], children=children)
+        
     @staticmethod
     def _rule_name(value: str) -> str:
         return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
@@ -103,7 +134,7 @@ class DecisionEngine:
                     "group", operator, contact_type=contact_type
                 )
         return registry
-
+    
     @staticmethod
     def _fields(evidence: MatchEvidence, field_type: str):
         return [
@@ -188,32 +219,19 @@ class DecisionEngine:
             return score <= self.lower_bound
         raise ConfigError(f"Unsupported predicate operator {spec.operator!r}")
 
-    def _parse_rule(self, expression: str, evidence: MatchEvidence) -> bool:
-        operators = list(re.finditer(r"(_+)(and|or)\1", expression))
-        if not operators:
-            token = expression.strip()
-            if not token:
-                raise ConfigError("Matching rule contains an empty expression")
-            return self._evaluate_predicate(token, evidence)
-
-        depth = max(len(match.group(1)) for match in operators)
-        outer = [match for match in operators if len(match.group(1)) == depth]
-        parts: list[str] = []
-        ops: list[str] = []
-        start = 0
-        for match in outer:
-            parts.append(expression[start:match.start()])
-            ops.append(match.group(2))
-            start = match.end()
-        parts.append(expression[start:])
-        value = self._parse_rule(parts[0], evidence)
-        for operator, part in zip(ops, parts[1:]):
-            right = self._parse_rule(part, evidence)
-            value = value and right if operator == "and" else value or right
-        return value
-
-    def _matches(self, rule: str, evidence: MatchEvidence) -> bool:
-        return self._parse_rule(rule, evidence)
+    def _eval_node(self, node: RuleNode, evidence: MatchEvidence):
+        if node.op == 'predicate':
+            assert node.token
+            return self._evaluate_predicate(node.token, evidence)
+        elif node.op == 'and':
+            assert node.children
+            return all(self._eval_node(child, evidence) for child in node.children)
+        elif node.op == 'or':
+            assert node.children
+            return any(self._eval_node(child, evidence) for child in node.children)
+    
+    def _evaluate(self, tree: RuleNode, evidence: MatchEvidence):
+        return self._eval_node(tree, evidence)
 
     def decide(self, evidence: MatchEvidence) -> PairDecision:
         if not evidence.used_fields:
@@ -230,7 +248,8 @@ class DecisionEngine:
         assert self.profile.auto_ignore_rule
         assert self.profile.auto_merge_rule
 
-        if self._parse_rule(self.profile.auto_ignore_rule, evidence):
+
+        if self._evaluate(self._ignore_tree, evidence):
             return PairDecision(
                 Decision.IGNORE,
                 self.profile.auto_ignore_rule,
@@ -240,7 +259,7 @@ class DecisionEngine:
                 self.profile_name,
                 evidence
             )
-        elif self._parse_rule(self.profile.auto_merge_rule, evidence):
+        elif self._evaluate(self._merge_tree, evidence):
             return PairDecision(
                 Decision.MERGE,
                 self.profile.auto_merge_rule,
