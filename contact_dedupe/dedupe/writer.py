@@ -91,6 +91,8 @@ class ResultWriter:
                 "primary_id": record_values.get(str(evidence.left_id), evidence.left_id),
                 "duplicate_id": record_values.get(str(evidence.right_id), evidence.right_id),
                 "match_score": evidence.match_score,
+                "reason": item.reason,
+                "matched_rule": item.matched_rule or "",
                 "candidate_blocks": self._json(evidence.candidate_blocks),
             }
             row.update({
