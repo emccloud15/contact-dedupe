@@ -121,8 +121,7 @@ class ResultWriter:
         columns = [
             "decision", "group_id", "primary_id", "duplicate_id",
             "match_score", "name_score", "email_score", "phone_score", "address_score",
-            "matched_fields", "conflicts", "reason", "reason_codes", "matched_rule",
-            "profile", "profile_version", "candidate_blocks",
+            "reason", "matched_rule", "candidate_blocks",
         ]
         if not rows:
             return pd.DataFrame(columns=columns)
