@@ -4,14 +4,14 @@ import re
 from datetime import datetime
 from pathlib import Path
 import sys
-from typing import Optional
+from typing import Optional, cast
 
 
 
     
 
 # Columns for the final check file
-def create_check_cols(orig_cols: list[str]) -> list:
+def create_check_cols(orig_cols: list[str]) -> list[str]:
     return [col for col in orig_cols if not 
             ((col.startswith('clean') or col.startswith('score') or col.startswith('main')) & col.endswith('_main')) |
             (col.startswith('clean') & ('dupe' not in col) ) | 
@@ -24,11 +24,11 @@ def create_check_cols(orig_cols: list[str]) -> list:
   
 def create_check_file(df: pd.DataFrame, output_path: str, u_bound: float) -> None:
 
-    check_file = df.merge(df, how='inner', left_on='Id', right_on='match_id', suffixes=('_main', '_duplicate'))
+    check_file = cast(pd.DataFrame, df.merge(df, how='inner', left_on='Id', right_on='match_id', suffixes=('_main', '_duplicate')))
     check_file = check_file[check_file['Id_main'] != check_file['Id_duplicate']]
     
     cols = create_check_cols(list(check_file.columns))
-    check_file = check_file[cols]
+    check_file = cast(pd.DataFrame, check_file.loc[:, cols])
     check_file.insert(0,'Merge','MERGE', allow_duplicates=True)
     mask = check_file['score_duplicate'] < u_bound
     check_file.loc[mask, 'Merge'] = 'CHECK'
@@ -39,4 +39,3 @@ def create_check_file(df: pd.DataFrame, output_path: str, u_bound: float) -> Non
 
 
 
-       

@@ -1,29 +1,89 @@
 import pandas as pd
-from typing import Callable
+from typing import Callable, cast, Any
 import click
 
-from .cleaning import clean_name, clean_email, clean_phone, clean_address
+from .cleaning import (
+    clean_address_series,
+    clean_email_series,
+    clean_name_series,
+    clean_phone_series,
+)
 
 from contact_dedupe.common.models import Columns
 from contact_dedupe.common.exceptions import ConfigError
 
 
+RECORD_ID_COLUMN = "_record_id"
+
+
 
 # This function is used when calling the cleaning function incase a column name in the yaml is not actually in the dataframe
-def safe_apply(df: pd.DataFrame, col: str, clean_fn: Callable[[str], str | None]) -> pd.Series:
+def configured_columns(data: Columns) -> list[str]:
+    columns: list[str] = []
+    for _, field_config in data:
+        if field_config is not None:
+            columns.extend(field_config.columns)
+            columns.extend(field_config.combine)
+    # Remove duplicates while preserving order. Duplicates can occur if a column is listed in both the columns and combine fields in the yaml.
+    return list(dict.fromkeys(columns))
+
+
+def validate_input_columns(
+    df: pd.DataFrame,
+    data: Columns,
+    required_columns: list[str] | None = None,
+) -> None:
+    # Required columns passed are one or all of the coulmns set for MATCH_FIELD, BLOCKING, NICKNAME, EXCLUSION
+    expected = configured_columns(data) + (required_columns or [])
+    missing = [column for column in dict.fromkeys(expected) if column not in df.columns]
+    if missing:
+        formatted = ", ".join(repr(column) for column in missing)
+        raise ConfigError(f"Configured columns are missing from the dataframe: {formatted}")
+
+
+def add_record_ids(
+    df: pd.DataFrame,
+    source_column: str | None = None,
+) -> pd.DataFrame:
+    """Add deterministic IDs without relying on dataframe index labels."""
+    result = df.copy()
+    if RECORD_ID_COLUMN in result.columns:
+        raise ConfigError(f"{RECORD_ID_COLUMN!r} is reserved for internal record identity")
+
+    if source_column and source_column in result.columns:
+        source = result[source_column]
+        if cast(bool, source.notna().all()) and not cast(bool, source.duplicated().any()):
+            result[RECORD_ID_COLUMN] = source.astype("string").radd("record:")
+            return result
+
+    positions = pd.Series(
+        pd.RangeIndex(len(result)).astype("string"),
+        index=result.index,
+    )
+    result[RECORD_ID_COLUMN] = positions.radd("record:")
+    return result
+
+
+def safe_apply(
+    df: pd.DataFrame,
+    col: str,
+    clean_fn: Callable[[pd.Series], pd.Series],
+) -> pd.Series:
     try:
-        return df[col].apply(clean_fn)
+        return clean_fn(df[col])
     except KeyError:
         raise ConfigError(f"Column name is not in the dataframe: {col}")
     except Exception as e:
         raise ConfigError(f"Error processing column: {col}: {e}")
 
 def combine_fields(fields: list[pd.Series], contact_type: str) -> pd.Series:
-    field_df = pd.concat(fields, axis=1)
-    def join_row(row: pd.Series) ->str:
-        vals = [v for v in row if pd.notna(v)]
-        return ''.join(vals) if vals else pd.NA # type: ignore
-    return field_df.apply(join_row, axis=1).rename(f"{contact_type}_combined")
+    field_df = pd.concat(fields, axis=1).astype("string")
+    field_df = field_df.apply(lambda column: column.str.strip())
+
+    combined = field_df.fillna("").sum(axis=1)
+    combined = cast(pd.Series, combined.mask(combined.eq("")))
+    combined.name = f"{contact_type}_combined"
+    return combined
 
 # Step 3. Create the normalized columns provided by cleaning them and combining them into one column
 # Only creates rows when there is no null value for one of the fields being combined.
@@ -33,15 +93,15 @@ def normalize_contact_method(
     df: pd.DataFrame,
     data: Columns,
     contact_type: str,
-    name_cache: dict
+    name_cache: dict[str, list[pd.Series]]
 ) -> pd.DataFrame:
     
     df = df.copy()
 
     clean_fns = {
-        'address': clean_address,
-        'phone': clean_phone,
-        'email': clean_email
+        "address": clean_address_series,
+        "phone": clean_phone_series,
+        "email": clean_email_series,
     }
     clean_fn = clean_fns[contact_type]
 
@@ -83,7 +143,8 @@ def normalize_contact_method(
         if getattr(data, contact_type).include_name:
 
             parts += [s[mask] for s in name_cache['names']]
-            joined_name = pd.concat(parts, axis=1).agg("|".join, axis=1)
+            joined_name = pd.concat(cast(list[pd.Series], parts), axis=1)
+            joined_name = joined_name.astype("string").fillna("").sum(axis=1)
 
             col = f'clean_{series.name}:name_{contact_type}'
             
@@ -94,32 +155,39 @@ def normalize_contact_method(
         df[col] = pd.NA
         df.loc[mask, col] = series
 
-    return df[[c for c in df.columns if c.startswith("clean_")]]
+    return df.loc[:, [c for c in df.columns if c.startswith("clean_")]].copy()
 
 
 
 # Step 1. Uncleaned Original Data Frame passed as well as the columns from the client yaml as data
-def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> pd.DataFrame:
+def normalize_df(
+    df: pd.DataFrame,
+    data: Columns,
+    contact_types: list[str],
+    required_columns: list[str] | None = None,
+    record_id_source: str | None = None,
+) -> pd.DataFrame:
+    validate_input_columns(df, data, required_columns)
     
     # Build a cache of cleaned name columns to be attached to other contact cols if user choice
-    name_cache ={}
+    name_cache: dict[str, list[pd.Series]] = {}
     if data.name:
         name_cols = [value for value in data.name.columns if data.name.columns]
         combine_name_cols = [value for value in data.name.combine if data.name.combine]
         if name_cols:
-            name_cache['names'] = [safe_apply(df,col,clean_name) for col in name_cols]
+            name_cache["names"] = [clean_name_series(df[col]) for col in name_cols]
         else:
-            name_series = [safe_apply(df,col,clean_name) for col in combine_name_cols]
-            name_cache['names'] = ([combine_fields(name_series,'names')])
+            name_series = [clean_name_series(df[col]) for col in combine_name_cols]
+            name_cache["names"] = [combine_fields(name_series, "names")]
 
     with click.progressbar(contact_types, label='cleaning data') as bar:
         # Passing every contact type and their respective yaml column data except name.
-        final_cleaned_dfs = [
+        final_cleaned_dfs: list[pd.DataFrame] = [
             normalize_contact_method(df=df, data=data, contact_type=ct, name_cache=name_cache)
             for ct in bar if ct != 'name']
         if data.name:
             # Create the combined name column if user chooses
-            if data.name.combine:
+            if data.name.combine and data.name.columns:
                 name_cache['names'] += ([combine_fields(name_cache['names'],'names')])
 
             # Rename and add name series into final cleaned output df
@@ -129,4 +197,5 @@ def normalize_df(df: pd.DataFrame, data: Columns, contact_types: list[str]) -> p
             final_cleaned_dfs.append(name_dfs)
     
         
-    return df.join(final_cleaned_dfs) # type: ignore
+    normalized = cast(pd.DataFrame, df.join(final_cleaned_dfs))
+    return add_record_ids(normalized, source_column=record_id_source)

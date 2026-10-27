@@ -46,12 +46,16 @@ Any other file count, or a missing `.yaml`/`.csv`, raises a `DataLoadError` and 
 
 ### Output
 
-Results are written to a new sibling folder next to your input directory:
+Results are written to a new folder under the selected output directory:
 
 Output_{CLIENT_NAME}_{today's date}/
 
-- **Standard runs** produce `master_dedupe_{date}.csv` — the full input data plus per-field `_dupe` flags, a `score`, `dupe` (True/False), and `match_id` grouping duplicates together.
-- **Virtuous runs** produce `{CLIENT_NAME}_{date}.csv`, where each row is a primary record joined side-by-side with its comparative duplicate. A `Merge` column is set to `MERGE`, `CHECK`, or `IGNORE` based on where the duplicate score falls relative to `u_bound`/`l_bound`, and internal helper columns (`clean_*`, `idx`, `order`, `count`, `root`, etc.) are stripped out before writing.
+- `dedupe_review.csv` — one row per candidate pair with the decision, scores, reasons, conflicts, candidate-block provenance, and original values.
+- `duplicate_groups.csv` — stable group IDs, canonical records, members, group decisions, and group conflicts.
+- `run_summary.json` — input/candidate/decision/group counts, profile information, and a UTC run timestamp.
+
+`example_config.yaml` is a complete copy-ready configuration showing the
+available fields, candidate blocks, matching profiles, and optional controls.
 
 ## Data cleaning & normalization
 
@@ -149,3 +153,31 @@ Tests live in `tests/` and run with `pytest` (configured via `[tool.pytest.ini_o
 uv run pytest
 ```
 
+Phase 1 establishes baseline coverage for configuration loading, CSV loading,
+cleaning, and normalization.
+
+Phase 2 now preserves missing values, validates configured input columns before
+normalization, validates matching bounds and weights, and reports actionable
+configuration errors. Empty and sparse input frames are covered by regression
+tests.
+
+Phases 3–5 add stable internal record IDs and standalone candidate generation
+with exact, prefix, and composite blocks. Candidate pairs expose the block
+strategies that produced them, while null keys and oversized buckets are
+excluded.
+
+Phase 6 adds `EvidenceBuilder`, which compares every generated candidate using
+field-level scores, exact-match flags, missing-field tracking, strong-contact
+conflicts, nickname-aware name matching, weighted aggregate scores, and
+candidate-block provenance. Matching decisions remain the next phase’s scope.
+
+Phase 7 adds versioned matching profiles and finite, validated rules for
+`AUTO_MERGE`, `REVIEW`, `NOT_DUPLICATE`, and `INSUFFICIENT_DATA` decisions.
+Strong email or phone conflicts always prevent automatic merging and produce an
+explainable review reason.
+
+Phases 8–11 make the explainable pipeline active: groups are built only from
+automatic pair decisions, transitive components are flagged for review, and
+each run writes `dedupe_review.csv`, `duplicate_groups.csv`, and
+`run_summary.json`. The CLI accepts `--yaml`, `--file`, and `--output`; profile
+evaluation is available through `evaluate_decisions` for labeled fixtures.

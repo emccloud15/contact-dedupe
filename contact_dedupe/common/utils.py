@@ -31,13 +31,15 @@ class Utilities:
         try:
             with open(file_path, "r") as f:
                 raw_config = yaml.safe_load(f)
-        except (FileNotFoundError, OSError) as e:
+        except (FileNotFoundError, OSError, yaml.YAMLError) as e:
             raise DataLoadError(f"Failed to load client config file: {file_path}") from e
+        if not isinstance(raw_config, dict):
+            raise ConfigError(f"Client config must contain a YAML mapping: {file_path}")
         try:
             client_settings = ClientConfig(**raw_config)
-        except ValidationError as e:
+        except (TypeError, ValidationError) as e:
             raise ConfigError(
-                f"Invalid client configuration. Check file for labeling errors: {file_path}"
+                f"Invalid client configuration in {file_path}: {e}"
             ) from e
         return client_settings
 
