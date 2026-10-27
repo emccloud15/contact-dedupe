@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 import re
 
-from typing import Optional
+from typing import Any
 
 from contact_dedupe.common.exceptions import ConfigError
 from contact_dedupe.common.models import ClientConfig, MatchingProfile
-from .evidence import MatchEvidence, FieldEvidence
+from .evidence import MatchEvidence, FieldEvidence, MatchType
 
 
 class Decision(StrEnum):
@@ -22,7 +22,16 @@ class Decision(StrEnum):
 
 @dataclass(frozen=True)
 class PairDecision:
+    left_id: Any
+    right_id: Any
     decision: Decision
+    overall_score: float
+    name_score: float | None
+    email_score: float | None
+    phone_score: float | None
+    address_score: float | None
+    match_types: dict[str, tuple[MatchType, ...]]
+    contact_data: dict[str, tuple[FieldEvidence, ...]]
     matched_rule: str | None
     reason_codes: tuple[str, ...]
     reason: str
@@ -135,59 +144,47 @@ class DecisionEngine:
                 )
         return registry
     
-    @staticmethod
-    def _fields(evidence: MatchEvidence, field_type: str):
-        return [
-            field for column, field in evidence.fields.items()
-            if column.rsplit(":", 1)[-1] == field_type
-        ]
-
-    @staticmethod
-    def _source_name(column: str) -> str:
-        return column.removeprefix("clean_").rsplit(":", 1)[0]
-
     def _group_score(self, evidence: MatchEvidence, contact_type: str) -> float | None:
-        fields = [
-            field for field in evidence.fields.values()
-            if field.contact_type == contact_type
-            and field.available
-            and field.score is not None
-            and field.weight > 0
-        ]
-        if not fields:
-            return None
-        total_weight = sum(field.weight for field in fields)
-        return sum(field.score * field.weight for field in fields) / total_weight
+        category = evidence.categories.get(contact_type)
+        return category.aggregate_score if category is not None else None
 
     def _group_fields(
         self,
         evidence: MatchEvidence,
         contact_type: str,
     ) -> list[FieldEvidence]:
-        return [
-            field for field in evidence.fields.values()
-            if field.contact_type == contact_type and field.available
-        ]
+        category = evidence.categories.get(contact_type)
+        return list(category.comparisons) if category is not None else []
+
+    @staticmethod
+    def _source_name(field_name: str) -> str:
+        return field_name.removeprefix("clean_").split(":", 1)[0]
 
     def _group_exact(self, evidence: MatchEvidence, contact_type: str) -> bool:
-        return any(field.exact for field in self._group_fields(evidence, contact_type))
+        return any(
+            field.match_type is MatchType.EXACT
+            for field in self._group_fields(evidence, contact_type)
+        )
 
     def _phone_majority_exact(self, evidence: MatchEvidence) -> bool:
         fields = self._group_fields(evidence, "phone")
         if not fields:
             return False
-        exact_count = sum(field.exact for field in fields)
+        exact_count = sum(field.match_type is MatchType.EXACT for field in fields)
         return exact_count > len(fields) / 2
 
     def _column_fields(self, evidence: MatchEvidence, column: str) -> list[FieldEvidence]:
         return [
-            field for field in evidence.fields.values()
-            if field.source_name == column
+            field
+            for category in evidence.categories.values()
+            for field in category.comparisons
+            if self._rule_name(self._source_name(field.left_field)) == self._rule_name(column)
+            or self._rule_name(self._source_name(field.right_field)) == self._rule_name(column)
         ]
 
     def _column_score(self, evidence: MatchEvidence, column: str) -> float | None:
-        fields = [field for field in self._column_fields(evidence, column) if field.available]
-        scores = [field.score for field in fields if field.score is not None]
+        fields = self._column_fields(evidence, column)
+        scores = [field.score for field in fields]
         return scores[0] if scores else None
 
     def _evaluate_predicate(self, name: str, evidence: MatchEvidence) -> bool:
@@ -196,7 +193,7 @@ class DecisionEngine:
             raise ConfigError(f"Rule references unknown predicate {name!r}")
 
         if spec.kind == "overall":
-            score = evidence.match_score
+            score = evidence.overall_score
         elif spec.kind == "group":
             score = self._group_score(evidence, spec.contact_type or "")
         else:
@@ -209,8 +206,8 @@ class DecisionEngine:
             return self._phone_majority_exact(evidence)
 
         if spec.operator == "exact":
-            fields = [field for field in self._column_fields(evidence, spec.column or "") if field.available]
-            return bool(fields) and all(field.exact for field in fields)
+            fields = self._column_fields(evidence, spec.column or "")
+            return any(field.match_type is MatchType.EXACT for field in fields)
         if score is None:
             return False
         if spec.operator == "high":
@@ -233,16 +230,48 @@ class DecisionEngine:
     def _evaluate(self, tree: RuleNode, evidence: MatchEvidence):
         return self._eval_node(tree, evidence)
 
+    def _result(
+        self,
+        evidence: MatchEvidence,
+        decision: Decision,
+        matched_rule: str | None,
+        reason_codes: tuple[str, ...],
+        reason: str,
+    ) -> PairDecision:
+        contact_data = {
+            name: tuple(category.comparisons)
+            for name, category in evidence.categories.items()
+        }
+        return PairDecision(
+            left_id=evidence.left_id,
+            right_id=evidence.right_id,
+            decision=decision,
+            overall_score=evidence.overall_score,
+            name_score=self._group_score(evidence, "name"),
+            address_score=self._group_score(evidence, "address"),
+            email_score=self._group_score(evidence, "email"),
+            phone_score=self._group_score(evidence, "phone"),
+            match_types={
+                name: tuple(field.match_type for field in category.comparisons)
+                for name, category in evidence.categories.items()
+            },
+            contact_data=contact_data,
+            matched_rule=matched_rule,
+            reason_codes=reason_codes,
+            reason=reason,
+            profile=self.profile_name,
+            profile_version=self.profile_name,
+            evidence=evidence,
+        )
+
     def decide(self, evidence: MatchEvidence) -> PairDecision:
-        if not evidence.used_fields:
-            return PairDecision(
+        if not any(category.comparisons for category in evidence.categories.values()):
+            return self._result(
+                evidence,
                 Decision.INSUFFICIENT_DATA,
                 None,
                 ("NO_COMPARABLE_FIELDS",),
                 "No comparable fields were available for this candidate pair.",
-                self.profile_name,
-                self.profile_name,
-                evidence,
             )
 
         assert self.profile.auto_ignore_rule
@@ -250,34 +279,22 @@ class DecisionEngine:
 
 
         if self._evaluate(self._ignore_tree, evidence):
-            return PairDecision(
-                Decision.IGNORE,
-                self.profile.auto_ignore_rule,
+            return self._result(
+                evidence, Decision.IGNORE, self.profile.auto_ignore_rule,
                 ("AUTO_IGNORE_RULE_MET",),
                 f"auto ignore rule: {self.profile.auto_ignore_rule} has been satisfied",
-                self.profile_name,
-                self.profile_name,
-                evidence
             )
         elif self._evaluate(self._merge_tree, evidence):
-            return PairDecision(
-                Decision.MERGE,
-                self.profile.auto_merge_rule,
-                ("AUTO_MERGE_RULE_MET", ),
+            return self._result(
+                evidence, Decision.MERGE, self.profile.auto_merge_rule,
+                ("AUTO_MERGE_RULE_MET",),
                 f"Auto merge rule: {self.profile.auto_merge_rule} has been satisfied",
-                self.profile_name,
-                self.profile_name,
-                evidence
             )
         else:
-            return PairDecision(
-                Decision.REVIEW,
-                None,
-                ("NO_AUTO_RULES_MET", ),
-                f"No auto rules have been satisfied",
-                self.profile_name,
-                self.profile_name,
-                evidence
+            return self._result(
+                evidence, Decision.REVIEW, None,
+                ("NO_AUTO_RULES_MET",),
+                "No auto rules have been satisfied",
             )
     def decide_all(self, evidence: list[MatchEvidence]) -> list[PairDecision]:
         return [self.decide(item) for item in evidence]

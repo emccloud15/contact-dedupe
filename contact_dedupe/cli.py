@@ -83,8 +83,7 @@ def main(argv: list[str] | None = None):
         main_df.run()
         artifacts = main_df.write_outputs(str(output_path))
         click.echo("Dedupe complete")
-        group_count = len(main_df.grouping.groups) if main_df.grouping is not None else 0
-        click.echo(f"Candidates: {len(main_df.candidate_pairs)}; groups: {group_count}")
+
         for artifact in artifacts.values():
             click.echo(str(artifact))
 

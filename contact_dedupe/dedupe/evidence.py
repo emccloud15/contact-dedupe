@@ -38,7 +38,6 @@ class FieldEvidence:
     left_value: Optional[str]
     right_value: Optional[str]
     score: float
-    exact: bool
     match_type: MatchType
 
 @dataclass
@@ -143,7 +142,6 @@ class EvidenceBuilder:
             right_field=right_field,
             left_value=left_value,
             right_value=right_value,
-            exact=exact,
             score=score,
             match_type=match_type
         )
@@ -213,7 +211,7 @@ class EvidenceBuilder:
 
             category_data.update({column.type: self._get_category_evidence(rows, left_id, right_id, column.type, column.columns)})
 
-        match_score += sum(category_data[column.type].aggregate_score * self._field_weight(column.type) for column in comparison_columns)
+        match_score += sum(category_data[column.type].aggregate_score for column in comparison_columns) / 4
 
         return MatchEvidence(
             left_id=left_id,

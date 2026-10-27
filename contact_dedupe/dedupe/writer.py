@@ -6,12 +6,10 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-import re
 
 import pandas as pd
 
 from .decision import PairDecision
-from .grouping import GroupingResult
 
 
 class ResultWriter:
@@ -19,16 +17,6 @@ class ResultWriter:
         self.profile = profile
         self.profile_version = profile_version or profile
         self.record_id_source = record_id_source
-
-    @staticmethod
-    def _json(value: Any) -> str:
-        if isinstance(value, (list, tuple, set)):
-            return json.dumps(list(value), sort_keys=True)
-        return "" if value is None else str(value)
-
-    @staticmethod
-    def _column_token(value: str) -> str:
-        return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
 
     def _record_value_map(
         self,
@@ -50,18 +38,25 @@ class ResultWriter:
         return result
 
     @staticmethod
-    def _average_group_scores(evidence) -> dict[str, float | None]:
-        scores: dict[str, list[float]] = {}
-        for field in evidence.fields.values():
-            if field.score is not None:
-                scores.setdefault(field.contact_type, []).append(field.score)
-        return {
-            contact_type: sum(values) / len(values)
-            for contact_type, values in scores.items()
-        }
+    def _display_field_name(field_name: str) -> str:
+        source_name = field_name.removeprefix("clean_").split(":", 1)[0]
+        return " ".join(part.capitalize() for part in source_name.split("_") if part)
+
+    @classmethod
+    def _match_details(cls, item: PairDecision, category: str) -> str:
+        details = []
+        for field in item.contact_data.get(category, ()):
+            left_name = cls._display_field_name(field.left_field)
+            right_name = cls._display_field_name(field.right_field)
+            match_type = field.match_type.value
+            detail = f"{left_name} -> {right_name}: {match_type}"
+            if match_type == "FUZZY":
+                detail += f" ({field.score:.1f})"
+            details.append(detail)
+        return "; ".join(details)
 
     def review_dataframe(
-        self, decisions: list[PairDecision], groups: GroupingResult, original: pd.DataFrame,
+        self, decisions: list[PairDecision], original: pd.DataFrame,
         record_ids: list[object] | None = None,
     ) -> pd.DataFrame:
         source_values = (
@@ -77,102 +72,66 @@ class ResultWriter:
             if not token.startswith("record:"):
                 source_ids[f"record:{token}"] = position
         record_values = self._record_value_map(original, record_ids)
-        group_by_member = {
-            member: group for group in groups.groups for member in group.member_record_ids
-        }
         rows: list[dict[str, Any]] = []
         for item in decisions:
-            evidence = item.evidence
-            group = group_by_member.get(evidence.left_id) or group_by_member.get(evidence.right_id)
-            group_id = record_values.get(str(group.canonical_record_id), "") if group else ""
             row: dict[str, Any] = {
                 "decision": item.decision.value,
-                "group_id": group_id,
-                "primary_id": record_values.get(str(evidence.left_id), evidence.left_id),
-                "duplicate_id": record_values.get(str(evidence.right_id), evidence.right_id),
-                "match_score": evidence.match_score,
+                "left_id": record_values.get(str(item.left_id), item.left_id),
+                "right_id": record_values.get(str(item.right_id), item.right_id),
+                "overall_score": item.overall_score,
+                "name_score": item.name_score,
+                "address_score": item.address_score,
+                "email_score": item.email_score,
+                "phone_score": item.phone_score,
+                "name_match_details": self._match_details(item, "name"),
+                "address_match_details": self._match_details(item, "address"),
+                "email_match_details": self._match_details(item, "email"),
+                "phone_match_details": self._match_details(item, "phone"),
                 "reason": item.reason,
                 "matched_rule": item.matched_rule or "",
-                "candidate_blocks": self._json(evidence.candidate_blocks),
             }
-            row.update({
-                f"{contact_type}_score": score
-                for contact_type, score in self._average_group_scores(evidence).items()
-            })
-            for label, record_id in (("primary", evidence.left_id), ("duplicate", evidence.right_id)):
+            for label, record_id in (("left", item.left_id), ("right", item.right_id)):
                 position = source_ids.get(str(record_id))
                 if position is not None:
                     source_row = original.iloc[position]
                     row.update({f"{label}_{column}": value for column, value in source_row.items()})
-            for field in evidence.fields.values():
-                token = self._column_token(field.source_name)
-                row[f"field_{token}_score"] = field.score
-                row[f"field_{token}_match_type"] = (
-                    field.match_type.value
-                    if hasattr(field.match_type, "value")
-                    else field.match_type
-                )
             rows.append(row)
         columns = [
-            "decision", "group_id", "primary_id", "duplicate_id",
-            "match_score", "name_score", "email_score", "phone_score", "address_score",
-            "reason", "matched_rule", "candidate_blocks",
+            "left_id", "right_id", "decision", "overall_score",
+            "name_score", "address_score", "email_score", "phone_score",
+        ]
+        detail_columns = [
+            "name_match_details",
+            "address_match_details",
+            "email_match_details",
+            "phone_match_details",
+        ]
+        metadata_columns = [
+            "reason", "matched_rule",
         ]
         if not rows:
-            return pd.DataFrame(columns=columns)
+            return pd.DataFrame(columns=columns + detail_columns + metadata_columns)
         result = pd.DataFrame(rows)
         contact_columns = [
             column for column in result.columns
             if column not in columns
-            and (column.startswith("primary_") or column.startswith("duplicate_"))
-        ]
-        evidence_columns = [
-            column for column in result.columns
-            if column.startswith("field_")
+            and (column.startswith("left_") or column.startswith("right_"))
         ]
         return result.reindex(
             columns=columns
             + contact_columns
-            + evidence_columns
+            + detail_columns
+            + metadata_columns
             + [
                 column for column in result.columns
-                if column not in columns + contact_columns + evidence_columns
+                if column not in columns + contact_columns + detail_columns + metadata_columns
             ]
         )
-
-    def groups_dataframe(
-        self,
-        groups: GroupingResult,
-        original: pd.DataFrame | None = None,
-        record_ids: list[object] | None = None,
-    ) -> pd.DataFrame:
-        record_values = (
-            self._record_value_map(original, record_ids)
-            if original is not None
-            else {}
-        )
-        return pd.DataFrame([
-            {
-                "group_id": record_values.get(str(group.canonical_record_id), group.group_id),
-                "canonical_record_id": record_values.get(
-                    str(group.canonical_record_id), group.canonical_record_id
-                ),
-                "member_count": len(group.member_record_ids),
-                "member_record_ids": self._json([
-                    record_values.get(str(member), member)
-                    for member in group.member_record_ids
-                ]),
-                "decision": group.decision.value,
-                "group_conflicts": self._json(group.conflicts),
-            }
-            for group in groups.groups
-        ])
 
     def write(
         self,
         output_dir: str | Path,
         decisions: list[PairDecision],
-        groups: GroupingResult,
         original: pd.DataFrame,
         record_ids: list[object] | None = None,
         metadata: dict[str, Any] | None = None,
@@ -180,20 +139,45 @@ class ResultWriter:
         directory = Path(output_dir)
         directory.mkdir(parents=True, exist_ok=True)
         review = directory / "dedupe_review.csv"
-        group_file = directory / "duplicate_groups.csv"
         summary = directory / "run_summary.json"
-        self.review_dataframe(decisions, groups, original, record_ids).to_csv(review, index=False)
-        self.groups_dataframe(groups, original, record_ids).to_csv(group_file, index=False)
+        self.review_dataframe(decisions, original, record_ids).to_csv(review, index=False)
         counts = pd.Series([item.decision.value for item in decisions]).value_counts().to_dict()
+        record_values = self._record_value_map(original, record_ids)
+        pair_details = [
+            {
+                "left_id": record_values.get(str(item.left_id), item.left_id),
+                "right_id": record_values.get(str(item.right_id), item.right_id),
+                "decision": item.decision.value,
+                "candidate_blocks": list(item.evidence.candidate_blocks),
+                "contact_data": {
+                    category: [
+                        {
+                            "left_field": field.left_field,
+                            "right_field": field.right_field,
+                            "left_value": field.left_value,
+                            "right_value": field.right_value,
+                            "score": field.score,
+                            "match_type": field.match_type.value,
+                        }
+                        for field in comparisons
+                    ]
+                    for category, comparisons in item.contact_data.items()
+                },
+            }
+            for item in decisions
+        ]
         payload = {
             "input_record_count": len(original),
             "candidate_pair_count": len(decisions),
             "decision_counts": counts,
-            "duplicate_group_count": len(groups.groups),
+            "pair_details": pair_details,
             "profile_used": self.profile,
             "profile_version": self.profile_version,
             "run_timestamp": datetime.now(timezone.utc).isoformat(),
             **(metadata or {}),
         }
-        summary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-        return {"review": review, "groups": group_file, "summary": summary}
+        summary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, default=str),
+            encoding="utf-8",
+        )
+        return {"review": review, "summary": summary}

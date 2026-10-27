@@ -8,13 +8,12 @@ from contact_dedupe.common.models import ClientConfig
 from .candidate_generator import CandidateGenerator
 from .decision import DecisionEngine, PairDecision
 from .evidence import EvidenceBuilder, MatchEvidence
-from .grouping import DuplicateGrouper, GroupingResult
 from .normalize import normalize_df
 from .writer import ResultWriter
 
 
 class Dedupe:
-    """Run normalization, candidate generation, comparison, decisions, and grouping."""
+    """Run normalization, candidate generation, comparison, and pairwise decisions."""
 
     def __init__(self, client_cfg: ClientConfig, df: pd.DataFrame) -> None:
         self.client_cfg = client_cfg
@@ -23,7 +22,6 @@ class Dedupe:
         self.candidate_pairs = pd.DataFrame()
         self.match_evidence: list[MatchEvidence] = []
         self.pair_decisions: list[PairDecision] = []
-        self.grouping: GroupingResult | None = None
         self.result = pd.DataFrame()
 
     def run(self) -> pd.DataFrame:
@@ -43,21 +41,20 @@ class Dedupe:
             self.main_df, self.candidate_pairs
         )
         print(f"Generated match evidence for {len(self.match_evidence)} candidate pairs")
+
         self.pair_decisions = DecisionEngine(self.client_cfg).decide_all(self.match_evidence)
-        self.grouping = DuplicateGrouper().build_groups(self.pair_decisions)
         self.result = ResultWriter(
             self.client_cfg.MATCHING_PROFILE, self.client_cfg.MATCHING_PROFILE,
             self.client_cfg.MATCH_FIELD,
-        ).review_dataframe(self.pair_decisions, self.grouping, self.original_df,
+        ).review_dataframe(self.pair_decisions, self.original_df,
                            self.main_df["_record_id"].tolist())
         return self.result
 
     def write_outputs(self, output_dir: str) -> dict[str, object]:
-        if self.grouping is None:
+        if not self.pair_decisions:
             self.run()
-        assert self.grouping is not None
         writer = ResultWriter(self.client_cfg.MATCHING_PROFILE, self.client_cfg.MATCHING_PROFILE,
                               self.client_cfg.MATCH_FIELD)
-        artifacts = writer.write(output_dir, self.pair_decisions, self.grouping, self.original_df,
+        artifacts = writer.write(output_dir, self.pair_decisions, self.original_df,
                                  self.main_df["_record_id"].tolist())
         return {key: value for key, value in artifacts.items()}
