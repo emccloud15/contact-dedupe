@@ -1,12 +1,31 @@
 # Copy this file and replace the example CSV column names with your own.
-# All names under COLUMNS, BLOCKING, MATCH_FIELD, NICKNAME, and EXCLUSION
-# must exist in the input CSV.
+#
+# Required input source columns assumed by this file:
+#   Contact ID (MATCH_FIELD)
+#   First Name (also NICKNAME), Last Name
+#   Email, Alternate Email
+#   Phone, Mobile Phone
+#   Street, City, State, ZIP
+#
+# Every name used under COLUMNS, MATCH_FIELD, NICKNAME and the candidate
+# blocks must exist in the input CSV; candidate block fields may also resolve
+# to a normalized/cleaned column. MAIN_MATCH_CRITERIA must be 'address' or one
+# of the configured `columns` entries (the model does not consider `combine`
+# entries).
+#
+# The active sections below are CLIENT_NAME, COLUMNS, CANDIDATE_BLOCK_PROFILE,
+# CANDIDATE_BLOCKS, MATCHING_PROFILE, MATCHING_PROFILES, MAIN_MATCH_CRITERIA,
+# MATCH_FIELD, NICKNAME and BOUNDS. Fields kept only for backward compatibility
+# are collected at the bottom under "Deprecated configuration fields".
 
 CLIENT_NAME: acme_contacts
 
 COLUMNS:
   name:
     include_name: false
+    # Retained for compatibility: validated/stored and may trigger the CLI
+    # auto-balance prompt, but the current evidence scoring does not apply
+    # these weights to category or overall scores.
     weight:
       - [First Name, 0.15]
       - [Last Name, 0.15]
@@ -16,6 +35,7 @@ COLUMNS:
 
   email:
     include_name: false
+    # Retained for compatibility (see the note under `name`).
     weight: 0.25
     columns:
       - Email
@@ -23,6 +43,7 @@ COLUMNS:
 
   phone:
     include_name: false
+    # Retained for compatibility (see the note under `name`).
     weight: 0.20
     columns:
       - Phone
@@ -30,62 +51,83 @@ COLUMNS:
 
   address:
     include_name: false
+    # Retained for compatibility (see the note under `name`).
     weight: 0.25
-    # Address columns are cleaned individually and compared as address fields.
+    # `columns` keeps a normalized `clean_ZIP:address` column so the `ZIP`
+    # candidate block field can resolve against it. `combine` concatenates the
+    # listed cleaned fields into a single `clean_address_combined:address`
+    # value, which is the value the `address_exact` matching rule compares. It
+    # needs at least two fields, and its fields are validated against the input
+    # columns like `columns`.
     columns:
+      - ZIP
+    combine:
       - Street
       - City
       - State
-      - ZIP
 
-# The older BLOCKING section remains required for compatibility. New runs
-# should normally use CANDIDATE_BLOCKS for multiple blocking strategies.
-BLOCKING:
-  strict: false
-  type: zipcode
-  column: ZIP
-  portion: start
+# Candidate blocking: CANDIDATE_BLOCK_PROFILE selects one named list from
+# CANDIDATE_BLOCKS. The block definitions are the active candidate-generation
+# control.
+CANDIDATE_BLOCK_PROFILE: acme_v1
 
-CANDIDATE_BLOCK_PROFILE: default_v1
-
-CANDIDATE_BLOCK_PROFILES:
-  default_v1:
+CANDIDATE_BLOCKS:
+  acme_v1:
+    # Exact matches on the cleaned email and phone columns.
     - type: exact
       field: email
       max_bucket_size: 500
     - type: exact
       field: phone
       max_bucket_size: 500
-    - type: prefix
-      field: postal_code
-      length: 3
-      direction: start
+    # Exact match on ZIP.
+    - type: exact
+      field: ZIP
       max_bucket_size: 1000
+    # Composite block on last name + ZIP.
     - type: composite
-      fields: [last_name, postal_code]
+      fields: [Last Name, ZIP]
       max_bucket_size: 500
-  
 
+# Matching profiles: MATCHING_PROFILE selects one profile from
+# MATCHING_PROFILES; each profile supplies an auto_merge_rule and an
+# auto_ignore_rule that drive the MERGE/REVIEW/IGNORE/INSUFFICIENT_DATA
+# decisions.
 MATCHING_PROFILE: balanced_v1
 
-# Rules are built dynamically from the configured column names and contact groups.
-# Use _and_/_or_ for inner operators and double underscores for an outer layer.
 MATCHING_PROFILES:
   balanced_v1:
     auto_merge_rule: email_high_or_phone_high
     auto_ignore_rule: match_score_low
 
+# Required by the schema. MAIN_MATCH_CRITERIA is validated (it must be
+# 'address' or one of the configured `columns` entries) but is not used to
+# gate candidates or decisions in the current matching code.
 MAIN_MATCH_CRITERIA: Email
+
+# MATCH_FIELD values become the internal record ids and the ids shown in the
+# output files.
 MATCH_FIELD: Contact ID
+
+# Source column used for nickname-aware name matching.
 NICKNAME: First Name
 
 BOUNDS:
   u_bound: 90
   l_bound: 75
 
-# Optional controls.
-EXCLUSION:
-  column: Account ID
-ADDRESS: false
-STRICT_MATCH: false
-BASE: false
+# ---------------------------------------------------------------------------
+# Deprecated configuration fields retained for compatibility
+# ---------------------------------------------------------------------------
+# These are still accepted and validated by the schema and should not be
+# removed yet, but they are not active matching controls in the current code.
+
+# EXCLUSION: the configured column is validated/required in the input, but no
+# exclusion behavior is applied.
+# EXCLUSION:
+#   column: Account ID
+
+# BASE, ADDRESS and STRICT_MATCH are accepted but currently unused.
+# BASE: false
+# ADDRESS: false
+# STRICT_MATCH: false
