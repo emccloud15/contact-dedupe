@@ -13,10 +13,12 @@ from .decision import PairDecision
 
 
 class ResultWriter:
-    def __init__(self, profile: str, profile_version: str | None = None, record_id_source: str | None = None):
+    def __init__(self, profile: str, client_name: str, profile_version: str | None = None, record_id_source: str | None = None):
         self.profile = profile
         self.profile_version = profile_version or profile
         self.record_id_source = record_id_source
+        self.client = client_name
+        self.today = datetime.date
 
     def _record_value_map(
         self,
@@ -138,8 +140,8 @@ class ResultWriter:
     ) -> dict[str, Path]:
         directory = Path(output_dir)
         directory.mkdir(parents=True, exist_ok=True)
-        review = directory / "dedupe_review.csv"
-        summary = directory / "run_summary.json"
+        review = directory / f"dedupe_review_{self.client}_{self.today}.csv"
+        summary = directory / f"run_summary_{self.client}_{self.today}.json"
         self.review_dataframe(decisions, original, record_ids).to_csv(review, index=False)
         counts = pd.Series([item.decision.value for item in decisions]).value_counts().to_dict()
         record_values = self._record_value_map(original, record_ids)

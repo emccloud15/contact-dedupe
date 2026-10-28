@@ -44,8 +44,8 @@ class Dedupe:
 
         self.pair_decisions = DecisionEngine(self.client_cfg).decide_all(self.match_evidence)
         self.result = ResultWriter(
-            self.client_cfg.MATCHING_PROFILE, self.client_cfg.MATCHING_PROFILE,
-            self.client_cfg.MATCH_FIELD,
+            self.client_cfg.MATCHING_PROFILE, self.client_cfg.CLIENT_NAME, self.client_cfg.MATCHING_PROFILE,
+            self.client_cfg.MATCH_FIELD
         ).review_dataframe(self.pair_decisions, self.original_df,
                            self.main_df["_record_id"].tolist())
         return self.result

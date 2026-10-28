@@ -348,12 +348,12 @@ and comments out `EXCLUSION`, `BASE`, `ADDRESS`, and `STRICT_MATCH`.
 Outputs are written (creating the directory if needed) to
 
 ```
-<output dir>/Output_<CLIENT_NAME>_<YYYY-MM-DD>/
+<output dir>/
 ```
 
 containing:
 
-### `dedupe_review.csv`
+### `dedupe_review_<client_name>_<todays date>.csv`
 
 One row per candidate pair, columns in this order:
 
@@ -368,7 +368,7 @@ One row per candidate pair, columns in this order:
 | `reason` | Human-readable explanation. |
 | `matched_rule` | The rule that fired, or empty. |
 
-### `run_summary.json`
+### `run_summary_<client_name>_<todays date>.json`
 
 JSON with `input_record_count`, `candidate_pair_count`, `decision_counts`,
 `pair_details` (per pair: `left_id`, `right_id`, `decision`, `candidate_blocks`,
