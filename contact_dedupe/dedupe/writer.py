@@ -18,7 +18,7 @@ class ResultWriter:
         self.profile_version = profile_version or profile
         self.record_id_source = record_id_source
         self.client = client_name
-        self.today = datetime.date
+        self.today = datetime.today().date()
 
     def _record_value_map(
         self,

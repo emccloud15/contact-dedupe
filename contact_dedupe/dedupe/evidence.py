@@ -244,6 +244,8 @@ class EvidenceBuilder:
         final = []
         with click.progressbar(candidates.to_dict(orient="records")) as bar:
             for row in bar:
+                if row["left_record_id"] == row["right_record_id"]:
+                    continue
                 final.append(
                     self._build_pair_from_rows(
                     rows, comparison_columns,

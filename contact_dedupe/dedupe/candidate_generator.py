@@ -177,6 +177,8 @@ class CandidateGenerator:
 
                         bucket_ids = record_ids[positions]
                         for left_id, right_id in combinations(bucket_ids, 2):
+                            if left_id == right_id:
+                                continue
                             pair = (
                                 (left_id, right_id)
                                 if str(left_id) < str(right_id)
