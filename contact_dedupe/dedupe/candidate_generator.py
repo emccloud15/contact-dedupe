@@ -166,8 +166,9 @@ class CandidateGenerator:
                     buckets: dict[str, list[int]] = defaultdict(list)
 
                     for position, key in enumerate(keys.tolist()):
-                        if self._usable(key):
-                            buckets[str(key)].append(position)
+                        if key is None:
+                            continue
+                        buckets[str(key)].append(position)
 
                     for positions in buckets.values():
                         if len(positions) > block.max_bucket_size:
